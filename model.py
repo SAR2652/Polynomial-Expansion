@@ -48,7 +48,7 @@ class AttentionDecoder(nn.Module):
         attn_weights = F.softmax(self.attn(torch.cat((embedded[0], torch.squeeze(hidden[0], axis = 1)), 1)), dim=1)
 
         # print('Attention Weights Shape after Concatenation & Softmax = ', attn_weights.shape)
-        attn_weights = attn_weights.to(torch.long)
+        # attn_weights = attn_weights.to(torch.long)
         attn_applied = torch.bmm(attn_weights.unsqueeze(0),
                                  encoder_outputs.unsqueeze(0))
         # print('Attention Shape after BMM = ', attn_applied.shape)
