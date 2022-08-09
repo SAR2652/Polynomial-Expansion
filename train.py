@@ -118,12 +118,11 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
                     if decoder_input.item() == tokenizer.eos_token_id:
                         break
 
+            loss.backward(retain_graph = True)
             encoder_optimizer.step()
             decoder_optimizer.step()
             epoch_loss += loss.item() / target_length
             running_loss += loss.item() / target_length
-            loss.backward()
-
             
             if i > 0 and (i + 1) % 1000 == 0:
                 print('Total Epoch Loss uptil now = {}'.format(epoch_loss))
