@@ -5,7 +5,7 @@ from polynomial.model import Encoder, AttentionDecoder
 from polynomial.utils import Tokenizer
 from pytorch_model_summary import summary
 
-factors, expressions = load_file('train.txt')
+factors, expressions = load_file('./data/train.txt')
 tokenizer = Tokenizer()
 tokenizer.expand_vocabulary(factors)
 tokenizer.expand_vocabulary(expressions)
