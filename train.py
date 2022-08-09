@@ -1,13 +1,14 @@
 
 import math, time, torch, random, pickle
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader
+import torch.nn as nn
+from torch import optim
 from dataset import PolynomialDataset
 from main import load_file
 import main, pickle
 from model import Encoder, AttentionDecoder
 from utils import *
-from torch.utils.data import DataLoader
-import torch.nn as nn
-from torch import optim
 
 args = get_training_arguments()
 
@@ -23,7 +24,9 @@ tokenizer_filepath = args.tokenizer_filepath
 tokenizer_binary = open(tokenizer_filepath, 'rb')
 tokenizer = pickle.load(tokenizer_binary)
 
-factors, expressions = load_file(input_file)
+factors, expansions = load_file(input_file)
+
+X_train, X_val, y_train, y_val = train_test_split(factors, expansions, test_size = 0.225, random_state = 42)
 
 if accelerator == 'cuda' and not torch.cuda.is_available():
     accelerator = 'cpu'
@@ -32,7 +35,8 @@ if accelerator == 'mps' and not torch.backends.mps.is_available() and not torch.
     accelerator = 'cpu'
 
 device = torch.device(accelerator)
-train_dataset = PolynomialDataset(factors, expressions, tokenizer, main.MAX_SEQUENCE_LENGTH)
+print('Training Accelerator: {}'.format(device))
+train_dataset = PolynomialDataset(X_train, y_train, tokenizer, main.MAX_SEQUENCE_LENGTH)
 
 train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = 1)
 
@@ -55,8 +59,8 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
     for epoch in range(1, epochs + 1):
         encoder_hidden = encoder.initHidden(device)
         epoch_loss = 0.0
-        running_loss = epoch_loss
-        prev_running_loss = running_loss
+        running_loss = 0.0
+        prev_running_loss = 0.0
 
         for i, batch in enumerate(dataloader):
             encoder_optimizer.zero_grad()
@@ -119,8 +123,11 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
             decoder_optimizer.step()
             epoch_loss += loss.item() / target_length
             running_loss += loss.item() / target_length
+            
+            if i > 0 and (i + 1) % 1000 == 0:
+                print('Total Epoch Loss uptil now = '.format(epoch_loss))
 
-            if i % 5000 == 0:
+            if i > 0 and (i + 1) % 5000 == 0:
                 now = time.time()
                 hours, rem = divmod(now-start, 3600)
                 minutes, seconds = divmod(rem, 60)

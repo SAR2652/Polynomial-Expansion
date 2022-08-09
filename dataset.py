@@ -19,6 +19,7 @@ class PolynomialDataset(Dataset):
         item = dict()
         item['factor'] = factor
         item['expansion'] = expansion
+        # print('Factor = {}'.format(factor))
         item['input_ids'] = factor_input_ids.view(-1, 1)
         item['labels'] = expansion_label_ids.view(-1, 1)
         item['vocabulary'] = self.tokenizer.vocab_dict
