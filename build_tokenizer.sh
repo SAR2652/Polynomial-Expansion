@@ -1,0 +1,1 @@
+python build_tokenizer.py ./train.txt ./tokenizers/tokenizer.pickle

@@ -1,0 +1,1 @@
+python train.py ./data/train.txt --accelerator cuda --model_path ./models/encoder_decoder_model.pt --tokenizer_filepath ./tokenizers/tokenizer.pickle
