@@ -125,7 +125,7 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
             running_loss += loss.item() / target_length
             
             if i > 0 and (i + 1) % 1000 == 0:
-                print('Total Epoch Loss uptil now = '.format(epoch_loss))
+                print('Total Epoch Loss uptil now = {}'.format(epoch_loss))
 
             if i > 0 and (i + 1) % 5000 == 0:
                 now = time.time()
