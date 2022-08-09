@@ -66,7 +66,8 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
 
-            input_ids = batch['input_ids'].to(device)
+            input_ids = torch.squeeze(batch['input_ids'], axis = 0).to(device)
+            print('Input IDs shape = ', input_ids.shape)
             labels = torch.squeeze(batch['labels'], axis = 0).to(device)
             # print('Labels Shape = ', labels.shape)
             input_length = input_ids.size(0)
@@ -77,7 +78,7 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
             loss = 0
 
             for ei in range(input_length):
-                encoder_output, encoder_hidden = encoder(input_ids[ei])
+                encoder_output, encoder_hidden = encoder(input_ids[ei], encoder_hidden)
                 encoder_outputs[ei] = encoder_output[0, 0]
 
             decoder_input = torch.tensor([[tokenizer.sos_token_id]], device=device)

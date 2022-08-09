@@ -10,12 +10,12 @@ tokenizer = Tokenizer()
 tokenizer.expand_vocabulary(factors)
 tokenizer.expand_vocabulary(expressions)
 
-hidden_size = 352
+hidden_size = 464
 f = open('network.txt', 'w')
 encoder = Encoder(tokenizer.current_token_idx, hidden_size)
-print(summary(encoder, torch.zeros(1, dtype = torch.long)))
-f.write(summary(encoder, torch.zeros(1, dtype = torch.long)))
+print(summary(encoder, torch.zeros(1, dtype = torch.long), torch.zeros(1, 1, hidden_size)))
+f.write(summary(encoder, torch.zeros(1, dtype = torch.long), torch.zeros(1, 1, hidden_size)))
 decoder = AttentionDecoder(hidden_size, tokenizer.current_token_idx)
-print(summary(decoder, torch.zeros((1, 1), dtype = torch.long), torch.zeros((1, 1, hidden_size)), torch.zeros((30, hidden_size), dtype = torch.long)))
-f.write(summary(decoder, torch.zeros((1, 1), dtype = torch.long), torch.zeros((1, 1, hidden_size)), torch.zeros((30, hidden_size), dtype = torch.long)))
+print(summary(decoder, torch.zeros((1, 1), dtype = torch.long), torch.zeros((1, 1, hidden_size)), torch.zeros((29, hidden_size), dtype = torch.long)))
+f.write(summary(decoder, torch.zeros((1, 1), dtype = torch.long), torch.zeros((1, 1, hidden_size)), torch.zeros((29, hidden_size), dtype = torch.long)))
 f.close()
