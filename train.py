@@ -36,11 +36,14 @@ train_dataset = PolynomialDataset(factors, expressions, tokenizer, main.MAX_SEQU
 
 train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = 1)
 
-encoder = Encoder(tokenizer.current_token_idx, hidden_size).to(device)
-decoder = AttentionDecoder(hidden_size, tokenizer.current_token_idx, 0.1, main.MAX_SEQUENCE_LENGTH).to(device)
+encoder = Encoder(tokenizer.current_token_idx, hidden_size)
+decoder = AttentionDecoder(hidden_size, tokenizer.current_token_idx, 0.1, main.MAX_SEQUENCE_LENGTH)
 
 encoder_optimizer = optim.Adam(encoder.parameters(), lr = learning_rate)
 decoder_optimizer = optim.Adam(decoder.parameters(), lr = learning_rate)
+
+encoder = encoder.to(device)
+decoder = decoder.to(device)
 
 def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, epochs, device):
     encoder.train()
