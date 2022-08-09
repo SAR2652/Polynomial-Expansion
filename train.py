@@ -59,8 +59,8 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
 
-            input_ids = batch['input_ids']
-            labels = torch.squeeze(batch['labels'], axis = 0)
+            input_ids = batch['input_ids'].to(device)
+            labels = torch.squeeze(batch['labels'], axis = 0).to(device)
             # print('Labels Shape = ', labels.shape)
             input_length = input_ids.size(0)
             target_length = labels.size(0)
