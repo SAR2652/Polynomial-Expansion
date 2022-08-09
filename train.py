@@ -77,7 +77,7 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
 
             decoder_hidden = encoder_hidden
 
-            use_teacher_forcing = True 
+            use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
             if use_teacher_forcing:
                 # Teacher forcing: Feed the target as the next input

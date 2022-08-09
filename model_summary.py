@@ -12,7 +12,6 @@ tokenizer.expand_vocabulary(expressions)
 
 hidden_size = 352
 f = open('network.txt', 'w')
-print('Embedding DIM = {}'.format(tokenizer.current_token_idx))
 encoder = Encoder(tokenizer.current_token_idx, hidden_size)
 print(summary(encoder, torch.zeros(1, dtype = torch.long)))
 f.write(summary(encoder, torch.zeros(1, dtype = torch.long)))
