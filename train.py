@@ -66,20 +66,21 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
 
-            input_ids = torch.squeeze(batch['input_ids'], axis = 0).to(device)
+            input_ids = batch['input_ids'].contiguous()[0, :, :].to(device)
             # print('Input IDs shape = ', input_ids.shape)
-            labels = torch.squeeze(batch['labels'], axis = 0).to(device)
+            labels = batch['labels'].contiguous()[0, :, :].to(device)
             # print('Labels Shape = ', labels.shape)
             input_length = input_ids.size(0)
             target_length = labels.size(0)
 
             encoder_outputs = torch.zeros(main.MAX_SEQUENCE_LENGTH, encoder.hidden_size, device=device)
 
-            loss = 0
+            loss = 0.0
 
             for ei in range(input_length):
                 encoder_output, encoder_hidden = encoder(input_ids[ei], encoder_hidden)
-                encoder_outputs[ei] = encoder_output[0, 0]
+
+            encoder_outputs[ei] = encoder_output[0, 0]
 
             decoder_input = torch.tensor([[tokenizer.sos_token_id]], device=device)
 
@@ -117,12 +118,16 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
                     loss += criterion(decoder_output, labels[di])
                     if decoder_input.item() == tokenizer.eos_token_id:
                         break
+            
+            current_loss = loss.item() / target_length 
+            epoch_loss += current_loss
+            running_loss += current_loss
 
-            loss.backward(retain_graph = True)
+            loss.backward()
+
             encoder_optimizer.step()
             decoder_optimizer.step()
-            epoch_loss += loss.item() / target_length
-            running_loss += loss.item() / target_length
+            
             
             if i > 0 and (i + 1) % 1000 == 0:
                 print('Total Epoch Loss uptil now = {}'.format(epoch_loss))
