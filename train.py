@@ -56,13 +56,15 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
     criterion = nn.NLLLoss()
     start = time.time()
 
+    
     for epoch in range(1, epochs + 1):
-        encoder_hidden = encoder.initHidden(device)
         epoch_loss = 0.0
         running_loss = 0.0
         prev_running_loss = 0.0
 
         for i, batch in enumerate(dataloader):
+            encoder_hidden = encoder.initHidden(device)
+        
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
 
@@ -75,7 +77,7 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
 
             encoder_outputs = torch.zeros(main.MAX_SEQUENCE_LENGTH, encoder.hidden_size, device=device)
 
-            loss = 0.0
+            loss = 0
 
             for ei in range(input_length):
                 encoder_output, encoder_hidden = encoder(input_ids[ei], encoder_hidden)
@@ -119,7 +121,9 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
                     if decoder_input.item() == tokenizer.eos_token_id:
                         break
             
+            
             current_loss = loss.item() / target_length 
+            print('Current Item Loss = {}'.format(current_loss))
             epoch_loss += current_loss
             running_loss += current_loss
 
@@ -128,9 +132,8 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
             encoder_optimizer.step()
             decoder_optimizer.step()
             
-            
-            if i > 0 and (i + 1) % 1000 == 0:
-                print('Total Epoch Loss uptil now = {}'.format(epoch_loss))
+            # if i > 0 and (i + 1) % 1000 == 0:
+                # print('Total Epoch Loss uptil now = {}'.format(epoch_loss))
 
             if i > 0 and (i + 1) % 5000 == 0:
                 now = time.time()
