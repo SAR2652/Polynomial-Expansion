@@ -47,7 +47,7 @@ encoder_optimizer = optim.Adam(encoder.parameters(), lr = learning_rate)
 decoder_optimizer = optim.Adam(decoder.parameters(), lr = learning_rate)
 
 encoder = encoder.to(device)
-decoder = decoder.to(device)
+decoder = decoder.to(device)    
 
 def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, epochs, device):
     encoder.train()
@@ -60,6 +60,7 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
     for epoch in range(1, epochs + 1):
         epoch_loss = 0.0
         running_loss = 0.0
+        running_losses = []
         prev_running_loss = 0.0
 
         for i, batch in enumerate(dataloader):
@@ -122,7 +123,7 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
                         break
             
             
-            current_loss = loss.item() / target_length 
+            current_loss = loss.item() / target_length
             # print('Current Item Loss = {}'.format(current_loss))
             epoch_loss += current_loss
             running_loss += current_loss
@@ -131,18 +132,17 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
 
             encoder_optimizer.step()
             decoder_optimizer.step()
-            
-            # if i > 0 and (i + 1) % 1000 == 0:
-                # print('Total Epoch Loss uptil now = {}'.format(epoch_loss))
 
             if i > 0 and (i + 1) % 5000 == 0:
                 now = time.time()
                 hours, rem = divmod(now-start, 3600)
                 minutes, seconds = divmod(rem, 60)
-                print("Time Elapsed = {:0>2}:{:0>2}:{:05.2f}, Running Loss = {}".format(int(hours),int(minutes),seconds, running_loss - prev_running_loss))
+                current_running_loss = running_loss - prev_running_loss
+                print("Time Elapsed = {:0>2}:{:0>2}:{:05.2f}, Running Loss = {}".format(int(hours),int(minutes),seconds, current_running_loss))
+                running_losses.append(current_running_loss)
                 prev_running_loss = running_loss
 
-        print('Training Loss for Epoch {} = {}'.format(epoch_loss))
+        print('Training Loss for Epoch {} = {}'.format(epoch, epoch_loss))
         epoch_losses.append(epoch_loss)
         torch.save({
             'epoch': epoch,
@@ -151,6 +151,8 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
             'encoder_optimizer_state_dict': encoder_optimizer.state_dict(),
             'decoder_optimizer_state_dict': decoder_optimizer.state_dict(),
             'loss': epoch_loss,
+            'epoch_losses': epoch_losses,
+            'running_losses': running_losses
             }, PATH)
 
 
