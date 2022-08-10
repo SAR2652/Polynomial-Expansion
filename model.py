@@ -19,7 +19,7 @@ class Encoder(nn.Module):
         return output, hidden
 
     def initHidden(self, device):
-        return torch.zeros(1, 1, self.hidden_size, device='cpu')
+        return torch.zeros(1, 1, self.hidden_size, device=device)
 
 class AttentionDecoder(nn.Module):
     def __init__(self, hidden_size, output_size, dropout_p=0.1, max_length=29):

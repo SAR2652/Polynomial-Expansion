@@ -123,7 +123,7 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
             
             
             current_loss = loss.item() / target_length 
-            print('Current Item Loss = {}'.format(current_loss))
+            # print('Current Item Loss = {}'.format(current_loss))
             epoch_loss += current_loss
             running_loss += current_loss
 
