@@ -26,7 +26,7 @@ tokenizer = pickle.load(tokenizer_binary)
 
 factors, expansions = load_file(input_file)
 
-X_train, X_val, y_train, y_val = train_test_split(factors, expansions, test_size = 0.225, random_state = 42)
+X_train, X_val, y_train, y_val = train_test_split(factors, expansions, test_size = 0.2, random_state = 42)
 
 if accelerator == 'cuda' and not torch.cuda.is_available():
     accelerator = 'cpu'
@@ -49,7 +49,7 @@ decoder_optimizer = optim.Adam(decoder.parameters(), lr = learning_rate)
 encoder = encoder.to(device)
 decoder = decoder.to(device)    
 
-def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, epochs, device):
+def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, epochs, device, print_every=10000):
     encoder.train()
     decoder.train()
     epoch_losses = []
@@ -82,8 +82,7 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
 
             for ei in range(input_length):
                 encoder_output, encoder_hidden = encoder(input_ids[ei], encoder_hidden)
-
-            encoder_outputs[ei] = encoder_output[0, 0]
+                encoder_outputs[ei] = encoder_output[0, 0]
 
             decoder_input = torch.tensor([[tokenizer.sos_token_id]], device=device)
 
@@ -122,24 +121,23 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
                     if decoder_input.item() == tokenizer.eos_token_id:
                         break
             
-            
+            loss.backward()
+
             current_loss = loss.item() / target_length
             # print('Current Item Loss = {}'.format(current_loss))
             epoch_loss += current_loss
             running_loss += current_loss
 
-            loss.backward()
-
             encoder_optimizer.step()
             decoder_optimizer.step()
 
-            if i > 0 and (i + 1) % 5000 == 0:
+            if i > 0 and (i + 1) % print_every == 0:
                 now = time.time()
                 hours, rem = divmod(now-start, 3600)
                 minutes, seconds = divmod(rem, 60)
                 current_running_loss = running_loss - prev_running_loss
-                print("Time Elapsed = {:0>2}:{:0>2}:{:05.2f}, Running Loss = {}".format(int(hours),int(minutes),seconds, current_running_loss))
-                running_losses.append(current_running_loss)
+                print("Samples Processed = {}, Time Elapsed = {:0>2}:{:0>2}:{:05.2f}, Running Loss = {}".format(i + 1, int(hours),int(minutes),seconds, current_running_loss / print_every))
+                running_losses.append(current_running_loss / print_every)
                 prev_running_loss = running_loss
 
         print('Training Loss for Epoch {} = {}'.format(epoch, epoch_loss))
