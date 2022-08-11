@@ -1,5 +1,5 @@
 
-import math, time, torch, random, pickle
+import math, time, torch, pickle
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -7,7 +7,7 @@ from torch import optim
 from dataset import PolynomialDataset
 from main import load_file
 import main, pickle
-from model import Encoder, AttentionDecoder
+from model import Encoder, Decoder, Seq2Seq
 from utils import *
 
 args = get_training_arguments()
@@ -36,26 +36,21 @@ if accelerator == 'mps' and not torch.backends.mps.is_available() and not torch.
 
 device = torch.device(accelerator)
 print('Training Accelerator: {}'.format(device))
-train_dataset = PolynomialDataset(X_train, y_train, tokenizer, main.MAX_SEQUENCE_LENGTH)
+train_dataset = PolynomialDataset(X_train, y_train, tokenizer, main.MAX_SEQUENCE_LENGTH + 1)
 
-train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = 1)
+train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = 32)
 
-encoder = Encoder(tokenizer.current_token_idx, hidden_size)
-decoder = AttentionDecoder(hidden_size, tokenizer.current_token_idx, 0.1, main.MAX_SEQUENCE_LENGTH)
+encoder = Encoder(tokenizer.vocab_size, hidden_size)
+decoder = Decoder(hidden_size, tokenizer.vocab_size)
+model = Seq2Seq(encoder, decoder, tokenizer.vocab_dict, device).to(device)
+optimizer = optim.Adam(model.parameters(), lr = learning_rate)   
 
-encoder_optimizer = optim.Adam(encoder.parameters(), lr = learning_rate)
-decoder_optimizer = optim.Adam(decoder.parameters(), lr = learning_rate)
-
-encoder = encoder.to(device)
-decoder = decoder.to(device)    
-
-def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, epochs, device, print_every=10000):
+def train(encoder, decoder, optimizer, dataloader, epochs, device, print_every=10000):
     encoder.train()
     decoder.train()
     epoch_losses = []
-    criterion = nn.NLLLoss()
+    criterion = nn.CrossEntropyLoss()
     start = time.time()
-
     
     for epoch in range(1, epochs + 1):
         epoch_loss = 0.0
@@ -64,72 +59,38 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
         prev_running_loss = 0.0
 
         for i, batch in enumerate(dataloader):
-            encoder_hidden = encoder.initHidden(device)
-        
-            encoder_optimizer.zero_grad()
-            decoder_optimizer.zero_grad()
+            optimizer.zero_grad()
 
-            input_ids = batch['input_ids'].contiguous()[0, :, :].to(device)
+            input_ids = batch['input_ids'].squeeze(2).to(device)
             # print('Input IDs shape = ', input_ids.shape)
-            labels = batch['labels'].contiguous()[0, :, :].to(device)
+            labels = batch['labels'].squeeze(2).to(device)
+            output = model(torch.t(input_ids), torch.t(labels))
+
+            # Output is of shape (trg_len, batch_size, output_dim) but Cross Entropy Loss
+            # doesn't take input in that form. For example if we have MNIST we want to have
+            # output to be: (N, 10) and targets just (N). Here we can view it in a similar
+            # way that we have output_words * batch_size that we want to send in into
+            # our cost function, so we need to do some reshapin. While we're at it
+            # Let's also remove the start token while we're at it
+
+            # print('Output Shape = ', output.shape)
             # print('Labels Shape = ', labels.shape)
-            input_length = input_ids.size(0)
-            target_length = labels.size(0)
-
-            encoder_outputs = torch.zeros(main.MAX_SEQUENCE_LENGTH, encoder.hidden_size, device=device)
-
-            loss = 0
-
-            for ei in range(input_length):
-                encoder_output, encoder_hidden = encoder(input_ids[ei], encoder_hidden)
-                encoder_outputs[ei] = encoder_output[0, 0]
-
-            decoder_input = torch.tensor([[tokenizer.sos_token_id]], device=device)
-
-            decoder_hidden = encoder_hidden
-
-            use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
-
-            if use_teacher_forcing:
-                # Teacher forcing: Feed the target as the next input
-                for di in range(target_length):
-
-                    # print('Decoder Input Shape = ', decoder_input.shape)
-                    # print('Decoder Hidden Shape = ', decoder_hidden.shape)
-                    # print('Encoder Outputs Shape = ', encoder_outputs.shape)
-                    decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-                    # decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input.to(torch.long), decoder_hidden, encoder_outputs.to(torch.long))
-                    # print('Decoder Output Shape = ', decoder_output.shape)
-                    # print('target_tensor[di] shape = ', labels[di].shape)
-                    loss += criterion(decoder_output, labels[di])
-                    decoder_input = labels[di]  # Teacher forcing
-
-            else:
-                # Without teacher forcing: use its own predictions as the next input
-                for di in range(target_length):
-                    # print('Decoder Input Shape = ', decoder_input.shape)
-                    # print('Decoder Hidden Shape = ', decoder_hidden.shape)
-                    # print('Encoder Outputs Shape = ', encoder_outputs.shape)
-                    decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-                    # decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input.to(torch.long), decoder_hidden, encoder_outputs.to(torch.long))
-                    # print('Decoder Output Shape = ', decoder_output.shape)
-                    # print('labels[di] shape = ', labels[di].shape)
-                    topv, topi = decoder_output.topk(1)
-                    decoder_input = topi.squeeze().detach()  # detach from history as input
-
-                    loss += criterion(decoder_output, labels[di])
-                    if decoder_input.item() == tokenizer.eos_token_id:
-                        break
+            
+            output = output[1:].reshape(-1, output.shape[2])
+            labels = torch.t(labels)[1:].reshape(-1)
+            # print('Output Shape = ', output.shape)
+            # print('Labels Shape = ', labels.shape)
+            loss = criterion(output, labels)
             
             loss.backward()
 
-            current_loss = loss.item() / target_length
-            # print('Current Item Loss = {}'.format(current_loss))
-            epoch_loss += current_loss
-            running_loss += current_loss
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
 
-            encoder_optimizer.step()
-            decoder_optimizer.step()
+            # print('Current Item Loss = {}'.format(current_loss))
+            epoch_loss += loss
+            running_loss += loss
+
+            optimizer.step()
 
             if i > 0 and (i + 1) % print_every == 0:
                 now = time.time()
@@ -144,14 +105,12 @@ def train(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, ep
         epoch_losses.append(epoch_loss)
         torch.save({
             'epoch': epoch,
-            'encoder_state_dict': encoder.state_dict(),
-            'decoder_state_dict': decoder.state_dict(),
-            'encoder_optimizer_state_dict': encoder_optimizer.state_dict(),
-            'decoder_optimizer_state_dict': decoder_optimizer.state_dict(),
+            'state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
             'loss': epoch_loss,
             'epoch_losses': epoch_losses,
             'running_losses': running_losses
             }, PATH)
 
 
-train(encoder, decoder, encoder_optimizer, decoder_optimizer, train_dataloader, epochs, device)
+train(encoder, decoder, optimizer, train_dataloader, epochs, device)

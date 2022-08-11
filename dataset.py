@@ -1,4 +1,3 @@
-import re, torch
 from torch.utils.data import Dataset
 
 class PolynomialDataset(Dataset):

@@ -1,3 +1,4 @@
+from pickle import NONE
 import re, torch, math, time, argparse
 
 class Tokenizer:
@@ -9,8 +10,12 @@ class Tokenizer:
         self.sos_token_id = 0
         self.eos_token_id = 1
         self.pad_token_id = 2
-        self.current_token_idx = self.eos_token_id
+        self.current_token_idx = 3
         self.vocab_dict = dict()
+        self.vocab_dict[self.sos_token] = self.sos_token_id
+        self.vocab_dict[self.eos_token] = self.eos_token_id
+        self.vocab_dict[self.pad_token] = self.pad_token_id
+        self.vocab_size = len(self.vocab_dict)
 
     def expand_vocabulary(self, expressions):
         """Create Vocabulary, i.e. mapping for each unique token and its corresponding index"""
@@ -21,16 +26,7 @@ class Tokenizer:
                 if token not in self.vocab_dict.keys():
                     self.vocab_dict[token] = self.current_token_idx
                     self.current_token_idx += 1
-        self.update_special_tokens()
-
-    def update_special_tokens(self):
-        """Update the token IDs of special tokens namely the EOS and PAD tokens"""
-        self.vocab_dict[self.eos_token] = self.current_token_idx
-        self.eos_token_id = self.current_token_idx
-        self.current_token_idx += 1
-        self.vocab_dict[self.pad_token] = self.current_token_idx
-        self.pad_token_id = self.current_token_idx
-        self.current_token_idx += 1
+        self.vocab_size = len(self.vocab_dict)
         
     def convert_tokens_to_ids(self, expression):
         """Convert Tokens into their corresponding Integer mappings"""
@@ -42,6 +38,8 @@ class Tokenizer:
         """Tokenize a single factor and its corresponding expansion and append EOS token"""
         factor_input_ids = self.convert_tokens_to_ids(factor)
         expansion_label_ids = self.convert_tokens_to_ids(expansion)
+        factor_input_ids.insert(self.sos_token_id, 0)
+        expansion_label_ids.insert(self.sos_token_id, 0)
         factor_input_ids.append(self.eos_token_id)
         expansion_label_ids.append(self.eos_token_id)
         factor_padding_length = max_seq_length - len(factor_input_ids)
