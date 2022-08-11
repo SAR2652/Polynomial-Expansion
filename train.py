@@ -86,9 +86,11 @@ def train(model, optimizer, dataloader, epochs, device, print_every=1600):
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
 
+            loss = loss.detach().cpu()
+
             # print('Current Item Loss = {}'.format(current_loss))
-            epoch_loss += loss
-            running_loss += loss
+            epoch_loss += loss.item()
+            running_loss += loss.item()
 
             optimizer.step()
 
