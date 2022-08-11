@@ -45,7 +45,7 @@ decoder = Decoder(hidden_size, tokenizer.vocab_size)
 model = Seq2Seq(encoder, decoder, tokenizer.vocab_dict, device).to(device)
 optimizer = optim.Adam(model.parameters(), lr = learning_rate)   
 
-def train(encoder, decoder, optimizer, dataloader, epochs, device, print_every=10000):
+def train(encoder, decoder, optimizer, dataloader, epochs, device, print_every=1600):
     encoder.train()
     decoder.train()
     epoch_losses = []
@@ -92,7 +92,7 @@ def train(encoder, decoder, optimizer, dataloader, epochs, device, print_every=1
 
             optimizer.step()
 
-            if i > 0 and (i + 1) % print_every == 0:
+            if i > 0 and ((i + 1) * 32) % print_every == 0:
                 now = time.time()
                 hours, rem = divmod(now-start, 3600)
                 minutes, seconds = divmod(rem, 60)
