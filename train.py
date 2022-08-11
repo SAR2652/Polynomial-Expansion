@@ -45,7 +45,7 @@ decoder = Decoder(hidden_size, tokenizer.vocab_size)
 model = Seq2Seq(encoder, decoder, tokenizer.vocab_dict, device).to(device)
 optimizer = optim.Adam(model.parameters(), lr = learning_rate)   
 
-def train(model, optimizer, dataloader, epochs, device, print_every=1600):
+def train(model, optimizer, dataloader, epochs, device, print_every=3200):
     model.train()
     epoch_losses = []
     epochwise_running_losses = []
