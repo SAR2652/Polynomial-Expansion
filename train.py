@@ -97,8 +97,8 @@ def train(encoder, decoder, optimizer, dataloader, epochs, device, print_every=1
                 hours, rem = divmod(now-start, 3600)
                 minutes, seconds = divmod(rem, 60)
                 current_running_loss = running_loss - prev_running_loss
-                print("Samples Processed = {}, Time Elapsed = {:0>2}:{:0>2}:{:05.2f}, Running Loss = {}".format(i + 1, int(hours),int(minutes),seconds, current_running_loss / print_every))
-                running_losses.append(current_running_loss / print_every)
+                print("Samples Processed = {}, Time Elapsed = {:0>2}:{:0>2}:{:05.2f}, Running Loss = {}".format((i + 1) * 32, int(hours),int(minutes),seconds, current_running_loss))
+                running_losses.append(current_running_loss)
                 prev_running_loss = running_loss
 
         print('Training Loss for Epoch {} = {}'.format(epoch, epoch_loss))
