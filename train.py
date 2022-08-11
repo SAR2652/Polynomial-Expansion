@@ -1,5 +1,5 @@
 
-import math, time, torch, pickle
+import time, torch, pickle
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -26,7 +26,7 @@ tokenizer = pickle.load(tokenizer_binary)
 
 factors, expansions = load_file(input_file)
 
-X_train, X_val, y_train, y_val = train_test_split(factors, expansions, test_size = 0.2, random_state = 42)
+X_train, X_val, y_train, y_val = train_test_split(factors, expansions, test_size = 0.225, random_state = 42)
 
 if accelerator == 'cuda' and not torch.cuda.is_available():
     accelerator = 'cpu'
@@ -38,18 +38,18 @@ device = torch.device(accelerator)
 print('Training Accelerator: {}'.format(device))
 train_dataset = PolynomialDataset(X_train, y_train, tokenizer, main.MAX_SEQUENCE_LENGTH + 1)
 
-train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = 32)
+train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = 16)
 
 encoder = Encoder(tokenizer.vocab_size, hidden_size)
 decoder = Decoder(hidden_size, tokenizer.vocab_size)
 model = Seq2Seq(encoder, decoder, tokenizer.vocab_dict, device).to(device)
 optimizer = optim.Adam(model.parameters(), lr = learning_rate)   
 
-def train(encoder, decoder, optimizer, dataloader, epochs, device, print_every=1600):
-    encoder.train()
-    decoder.train()
+def train(model, optimizer, dataloader, epochs, device, print_every=1600):
+    model.train()
     epoch_losses = []
-    criterion = nn.CrossEntropyLoss()
+    epochwise_running_losses = []
+    criterion = nn.CrossEntropyLoss(ignore_index = tokenizer.pad_token_id)
     start = time.time()
     
     for epoch in range(1, epochs + 1):
@@ -103,14 +103,15 @@ def train(encoder, decoder, optimizer, dataloader, epochs, device, print_every=1
 
         print('Training Loss for Epoch {} = {}'.format(epoch, epoch_loss))
         epoch_losses.append(epoch_loss)
+        epochwise_running_losses.append(running_losses)
         torch.save({
             'epoch': epoch,
             'state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': epoch_loss,
             'epoch_losses': epoch_losses,
-            'running_losses': running_losses
+            'epochwise_running_losses': epochwise_running_losses
             }, PATH)
 
 
-train(encoder, decoder, optimizer, train_dataloader, epochs, device)
+train(model, optimizer, train_dataloader, epochs, device)
