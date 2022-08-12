@@ -80,7 +80,7 @@ def timeSince(since, percent):
 def get_training_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('input_filepath', type=str, help = 'Path to Input File')
-    parser.add_argument('--hidden_size', type=int, help = 'Number of Neurons in Hidden Layers', default = 352)
+    parser.add_argument('--hidden_size', type=int, help = 'Number of Neurons in Hidden Layers', default = 320)
     parser.add_argument('--accelerator', type=str, help = 'Device to Accelerate Training', default = 'cpu')
     parser.add_argument('--learning_rate', type=int, help = 'Learning Rate at which the model is to be trained', default = 2e-4)
     parser.add_argument('--model_path', type=str, help = 'Path at which the model is to be saved', default = './models/encoder_decoder_model.pt')
@@ -99,5 +99,5 @@ def get_inference_arguments():
     parser.add_argument('input_filepath', type=str, help = 'Path to Input File')
     parser.add_argument('--tokenizer_filepath', type=str, help = 'Path to load tokenizer file', default = './tokenizers/tokenizer.pickle')
     parser.add_argument('--model_path', type=str, help = 'Path to saved model state dictionary', default = './models/new_encoder_decoder_model.pt')
-    parser.add_argument('--hidden_size')
+    parser.add_argument('--hidden_size', type=str, help = 'Number of neurons in hidden layer', deefault = 320)
     return parser.parse_args()

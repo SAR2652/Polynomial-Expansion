@@ -28,8 +28,6 @@ df = pd.read_csv(input_file)
 factors = df['factor'].tolist()
 expansions = df['expansion'].tolist()
 
-X_train, X_val, y_train, y_val = train_test_split(factors, expansions, test_size = 0.225, random_state = 42)
-
 if accelerator == 'cuda' and not torch.cuda.is_available():
     accelerator = 'cpu'
 
@@ -38,14 +36,18 @@ if accelerator == 'mps' and not torch.backends.mps.is_available() and not torch.
 
 device = torch.device(accelerator)
 print('Training Accelerator: {}'.format(device))
-train_dataset = PolynomialDataset(X_train, y_train, tokenizer, main.MAX_SEQUENCE_LENGTH + 1)
 
-train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = 16)
+train_dataset = PolynomialDataset(factors, expansions, tokenizer, main.MAX_SEQUENCE_LENGTH + 1)
+batch_size = 32
 
-model = create_model(tokenizer.vocab_dict, tokenizer.vocab_size, hidden_size)
+train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = batch_size)
+
+model = create_model(tokenizer.vocab_dict, tokenizer.vocab_size, hidden_size, device)
 optimizer = optim.Adam(model.parameters(), lr = learning_rate)   
 
-def train(model, optimizer, dataloader, epochs, device, print_every=3200):
+steps_per_epoch = train_dataset.__len__() // batch_size
+
+def train(model, optimizer, dataloader, epochs, device, print_every):
     model.train()
     epoch_losses = []
     epochwise_running_losses = []
@@ -94,7 +96,7 @@ def train(model, optimizer, dataloader, epochs, device, print_every=3200):
 
             optimizer.step()
 
-            if i > 0 and ((i + 1) * 32) % print_every == 0:
+            if i > 0 and ((i + 1) * batch_size) % print_every == 0:
                 now = time.time()
                 hours, rem = divmod(now-start, 3600)
                 minutes, seconds = divmod(rem, 60)
@@ -116,4 +118,4 @@ def train(model, optimizer, dataloader, epochs, device, print_every=3200):
             }, PATH)
 
 
-train(model, optimizer, train_dataloader, epochs, device)
+train(model, optimizer, train_dataloader, epochs, device, steps_per_epoch)
