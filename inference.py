@@ -56,6 +56,7 @@ def expand_polynomial(model, factors, tokenizer, device, max_length=30):
     return expansions
 
 expansions = expand_polynomial(model, factors, tokenizer, device)
+
 with open('expansions.txt', 'w') as f:
     for expansion in expansions:
         f.write(f"{expansion}\n")
