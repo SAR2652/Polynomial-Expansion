@@ -36,6 +36,7 @@ if accelerator == 'mps' and not torch.backends.mps.is_available() and not torch.
 
 device = torch.device(accelerator)
 print('Training Accelerator: {}'.format(device))
+print('Model will run for {} epochs.'.format(epochs))
 
 train_dataset = PolynomialDataset(factors, expansions, tokenizer, main.MAX_SEQUENCE_LENGTH + 1)
 batch_size = 32
