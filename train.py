@@ -43,6 +43,7 @@ batch_size = 32
 train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = batch_size)
 
 model = create_model(tokenizer.vocab_dict, tokenizer.vocab_size, hidden_size, device)
+model = model.to(device)
 optimizer = optim.Adam(model.parameters(), lr = learning_rate)   
 
 steps_per_epoch = train_dataset.__len__() // batch_size
