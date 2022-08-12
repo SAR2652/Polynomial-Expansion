@@ -1,4 +1,5 @@
 import torch, random
+from torch import optim
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -29,9 +30,9 @@ class Encoder(nn.Module):
         # Also using index slicing ([idx:idx+1]) to keep the dimension
         hidden = self.fc_hidden(torch.cat((hidden[0:1], hidden[1:2]), dim=2))
         cell = self.fc_cell(torch.cat((cell[0:1], cell[1:2]), dim=2))
-        # print('Encoder States Shape = ', encoder_states.shape)
-        # print('Hidden Shape = ', hidden.shape)
-        # print('Cell Shape = ', cell.shape)
+        print('Encoder States Shape = ', encoder_states.shape)
+        print('Hidden Shape = ', hidden.shape)
+        print('Cell Shape = ', cell.shape)
         return encoder_states, hidden, cell
 
 
@@ -126,3 +127,15 @@ class Seq2Seq(nn.Module):
             x = target[t] if random.random() < teacher_force_ratio else best_guess
 
         return outputs
+
+def create_model(vocab_dict, vocab_size, hidden_size, device):
+    encoder = Encoder(vocab_size, hidden_size)
+    decoder = Decoder(hidden_size, vocab_size)
+    model = Seq2Seq(encoder, decoder, vocab_dict, device)
+    return model
+
+def load_model(vocab_dict, vocab_size, hidden_size, device, PATH):
+    model = create_model(vocab_dict, vocab_size, hidden_size, device)
+    checkpoint = torch.load(PATH, map_location=device)
+    model.load_state_dict(checkpoint['state_dict'])
+    return model

@@ -1,13 +1,12 @@
-
 import time, torch, pickle
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 import torch.nn as nn
 from torch import optim
+import pandas as pd
 from dataset import PolynomialDataset
-from main import load_file
 import main, pickle
-from model import Encoder, Decoder, Seq2Seq
+from model import create_model
 from utils import *
 
 args = get_training_arguments()
@@ -24,7 +23,10 @@ tokenizer_filepath = args.tokenizer_filepath
 tokenizer_binary = open(tokenizer_filepath, 'rb')
 tokenizer = pickle.load(tokenizer_binary)
 
-factors, expansions = load_file(input_file)
+df = pd.read_csv(input_file)
+
+factors = df['factor'].tolist()
+expansions = df['expansion'].tolist()
 
 X_train, X_val, y_train, y_val = train_test_split(factors, expansions, test_size = 0.225, random_state = 42)
 
@@ -40,9 +42,7 @@ train_dataset = PolynomialDataset(X_train, y_train, tokenizer, main.MAX_SEQUENCE
 
 train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = 16)
 
-encoder = Encoder(tokenizer.vocab_size, hidden_size)
-decoder = Decoder(hidden_size, tokenizer.vocab_size)
-model = Seq2Seq(encoder, decoder, tokenizer.vocab_dict, device).to(device)
+model = create_model(tokenizer.vocab_dict, tokenizer.vocab_size, hidden_size)
 optimizer = optim.Adam(model.parameters(), lr = learning_rate)   
 
 def train(model, optimizer, dataloader, epochs, device, print_every=3200):

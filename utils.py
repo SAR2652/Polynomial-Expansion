@@ -16,6 +16,7 @@ class Tokenizer:
         self.vocab_dict[self.eos_token] = self.eos_token_id
         self.vocab_dict[self.pad_token] = self.pad_token_id
         self.vocab_size = len(self.vocab_dict)
+        self.id_dict = dict((v, k) for k, v in self.vocab_dict.items())
 
     def expand_vocabulary(self, expressions):
         """Create Vocabulary, i.e. mapping for each unique token and its corresponding index"""
@@ -25,6 +26,7 @@ class Tokenizer:
             for token in tokens:
                 if token not in self.vocab_dict.keys():
                     self.vocab_dict[token] = self.current_token_idx
+                    self.id_dict[self.current_token_idx] = token
                     self.current_token_idx += 1
         self.vocab_size = len(self.vocab_dict)
         
@@ -48,6 +50,19 @@ class Tokenizer:
         expansion_label_ids.extend([self.pad_token_id] * expansion_padding_length)
         return torch.tensor(factor_input_ids, dtype = torch.long), \
             torch.tensor(expansion_label_ids, dtype = torch.long)
+
+    def encode_factor(self, factor, max_seq_length):
+        factor_input_ids = self.convert_tokens_to_ids(factor)
+        factor_input_ids.insert(self.sos_token_id, 0)
+        factor_input_ids.append(self.eos_token_id)
+        factor_padding_length = max_seq_length - len(factor_input_ids)
+        factor_input_ids.extend([self.pad_token_id] * factor_padding_length)
+        return torch.tensor(factor_input_ids, dtype = torch.long)
+
+    def decode(self, expression):
+        """Convert IDs to their corresponding tokens"""
+        special_token_ids = [self.sos_token_id, self.eos_token_id, self.pad_token_id]
+        return ''.join([self.id_dict[id] for id in expression if id not in special_token_ids])
 
 def asMinutes(s):
     m = math.floor(s / 60)
@@ -77,4 +92,12 @@ def get_vocabulary_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('input_filepath', type=str, help = 'Path to Input File')
     parser.add_argument('tokenizer_filepath', type=str, help = 'Path to save tokenizer file', default = './tokenizers/tokenizer.pickle')
+    return parser.parse_args()
+
+def get_inference_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('input_filepath', type=str, help = 'Path to Input File')
+    parser.add_argument('--tokenizer_filepath', type=str, help = 'Path to load tokenizer file', default = './tokenizers/tokenizer.pickle')
+    parser.add_argument('--model_path', type=str, help = 'Path to saved model state dictionary', default = './models/new_encoder_decoder_model.pt')
+    parser.add_argument('--hidden_size')
     return parser.parse_args()

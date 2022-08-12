@@ -15,7 +15,7 @@ hidden_size = 320
 device = torch.device('cpu')
 
 max_seq_length = 30
-batch_size = 32
+batch_size = 1
 encoder = Encoder(tokenizer.current_token_idx, hidden_size)
 decoder = Decoder(hidden_size, tokenizer.current_token_idx)
 model = Seq2Seq(encoder, decoder, tokenizer.vocab_dict, device)
