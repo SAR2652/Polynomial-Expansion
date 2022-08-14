@@ -30,7 +30,7 @@ model = model.to(device)
 def expand_polynomial(model, factors, tokenizer, device, max_length=30):
     expansions = []
     for factor in factors:
-        input_ids = tokenizer.encode_factor(factor, max_length).view(-1, 1)
+        input_ids = tokenizer.encode_expression(factor, max_length).view(-1, 1)
         with torch.no_grad():
             outputs_encoder, hiddens, cells = model.encoder(input_ids)
         
@@ -50,16 +50,16 @@ def expand_polynomial(model, factors, tokenizer, device, max_length=30):
             if output.argmax(1).item() == tokenizer.eos_token_id:
                 break
 
-        expansion = tokenizer.decode(outputs)
+        expansion = tokenizer.decode_expression(outputs)
         expansions.append(expansion)
 
     return expansions
 
-expansions = expand_polynomial(model, factors, tokenizer, device)
+expansions = expand_polynomial(model, factors[:20], tokenizer, device)
 
 with open('expansions.txt', 'w') as f:
-    for expansion in expansions:
-        f.write(f"{expansion}\n")
+    for factor, expansion in list(zip(factors[:20], expansions)):
+        f.write(f"{factor}={expansion}\n")
 
         
             

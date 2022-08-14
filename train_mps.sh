@@ -1,1 +1,1 @@
-python train.py ./data/train.txt --accelerator mps --model_path ./models/encoder_decoder_model.pt --tokenizer_filepath ./tokenizers/tokenizer.pickle
+python train.py ./data/training.csv --accelerator mps --model_path ./models/encoder_decoder_model.pt --tokenizer_filepath ./tokenizers/tokenizer.pickle --epochs 50
