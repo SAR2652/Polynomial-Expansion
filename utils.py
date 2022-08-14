@@ -30,7 +30,7 @@ class Tokenizer:
         
     def convert_tokens_to_ids(self, expression):
         """Convert Tokens into their corresponding Integer mappings"""
-        tokens = self.pattern.findall(expression)
+        tokens = list(expression)
         input_ids = [self.vocab_dict[token] for token in tokens]
         return input_ids
 
