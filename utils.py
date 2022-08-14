@@ -20,7 +20,6 @@ class Tokenizer:
 
     def expand_vocabulary(self, expressions):
         """Create Vocabulary, i.e. mapping for each unique token and its corresponding index"""
-        self.current_token_idx = self.eos_token_id
         for expression in expressions:
             tokens = self.pattern.findall(expression)
             for token in tokens:
@@ -51,18 +50,25 @@ class Tokenizer:
         return torch.tensor(factor_input_ids, dtype = torch.long), \
             torch.tensor(expansion_label_ids, dtype = torch.long)
 
-    def encode_factor(self, factor, max_seq_length):
-        factor_input_ids = self.convert_tokens_to_ids(factor)
-        factor_input_ids.insert(self.sos_token_id, 0)
-        factor_input_ids.append(self.eos_token_id)
-        factor_padding_length = max_seq_length - len(factor_input_ids)
-        factor_input_ids.extend([self.pad_token_id] * factor_padding_length)
-        return torch.tensor(factor_input_ids, dtype = torch.long)
+    def encode_expression(self, expression, max_seq_length):
+        """Encode a single expression into its corresponding numeric ids"""
+        input_ids = self.convert_tokens_to_ids(expression)
+        input_ids.insert(self.sos_token_id, 0)
+        input_ids.append(self.eos_token_id)
+        padding_length = max_seq_length - len(input_ids)
+        input_ids.extend([self.pad_token_id] * padding_length)
+        return torch.tensor(input_ids, dtype = torch.long)
 
-    def decode(self, expression):
+    def decode_expression(self, expression):
         """Convert IDs to their corresponding tokens"""
         special_token_ids = [self.sos_token_id, self.eos_token_id, self.pad_token_id]
         return ''.join([self.id_dict[id] for id in expression if id not in special_token_ids])
+
+    def validate(self):
+        for key, value in self.vocab_dict.items():
+            if self.id_dict[value] != key:
+                return False
+        return True
 
 def asMinutes(s):
     m = math.floor(s / 60)
@@ -99,5 +105,5 @@ def get_inference_arguments():
     parser.add_argument('input_filepath', type=str, help = 'Path to Input File')
     parser.add_argument('--tokenizer_filepath', type=str, help = 'Path to load tokenizer file', default = './tokenizers/tokenizer.pickle')
     parser.add_argument('--model_path', type=str, help = 'Path to saved model state dictionary', default = './models/new_encoder_decoder_model.pt')
-    parser.add_argument('--hidden_size', type=str, help = 'Number of neurons in hidden layer', deefault = 320)
+    parser.add_argument('--hidden_size', type=str, help = 'Number of neurons in hidden layer', default = 320)
     return parser.parse_args()
