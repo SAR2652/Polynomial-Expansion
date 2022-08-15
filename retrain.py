@@ -42,7 +42,7 @@ batch_size = 32
 
 train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = batch_size)
 
-model = load_model(tokenizer.vocab_dict, tokenizer.vocab_size, hidden_size, device, PATH)
+model = load_model(tokenizer.vocab_dict, tokenizer.vocab_size, hidden_size, 'cpu', PATH)
 model = model.to(device)
 optimizer = optim.Adam(model.parameters(), lr = learning_rate)
 checkpoint = torch.load(PATH, map_location=device)

@@ -105,4 +105,5 @@ def get_inference_arguments():
     parser.add_argument('--tokenizer_filepath', type=str, help = 'Path to load tokenizer file', default = './tokenizers/tokenizer.pickle')
     parser.add_argument('--model_path', type=str, help = 'Path to saved model state dictionary', default = './models/new_encoder_decoder_model.pt')
     parser.add_argument('--hidden_size', type=str, help = 'Number of neurons in hidden layer', default = 320)
+    parser.add_argument('--accelerator', type=str, help = 'Device to speed up inference', default = 'cpu')
     return parser.parse_args()
