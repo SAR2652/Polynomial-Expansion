@@ -64,13 +64,8 @@ class Tokenizer:
         return ''.join([self.id_dict[id] for id in expression if id not in special_token_ids])
 
     def validate(self):
-<<<<<<< HEAD
         for k, v in self.vocab_dict.items():
             if self.id_dict[v] != k:
-=======
-        for key, value in self.vocab_dict.items():
-            if self.id_dict[value] != key:
->>>>>>> e00c49d21feba76a848f0f724e8510aa6910d82b
                 return False
         return True
 
