@@ -112,7 +112,7 @@ def train(model, optimizer, dataloader, epochs, device, print_every):
         epochwise_running_losses.append(running_losses)
         torch.save({
             'epoch': epoch,
-            'state_dict': model.state_dict(),
+            'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': epoch_loss,
             'epoch_losses': epoch_losses,

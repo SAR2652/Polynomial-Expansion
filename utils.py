@@ -64,8 +64,13 @@ class Tokenizer:
         return ''.join([self.id_dict[id] for id in expression if id not in special_token_ids])
 
     def validate(self):
+<<<<<<< HEAD
         for k, v in self.vocab_dict.items():
             if self.id_dict[v] != k:
+=======
+        for key, value in self.vocab_dict.items():
+            if self.id_dict[value] != key:
+>>>>>>> e00c49d21feba76a848f0f724e8510aa6910d82b
                 return False
         return True
 
@@ -105,5 +110,8 @@ def get_inference_arguments():
     parser.add_argument('--tokenizer_filepath', type=str, help = 'Path to load tokenizer file', default = './tokenizers/tokenizer.pickle')
     parser.add_argument('--model_path', type=str, help = 'Path to saved model state dictionary', default = './models/new_encoder_decoder_model.pt')
     parser.add_argument('--hidden_size', type=str, help = 'Number of neurons in hidden layer', default = 320)
+<<<<<<< HEAD
     parser.add_argument('--accelerator', type=str, help = 'Device to speed up inference', default = 'cpu')
+=======
+>>>>>>> e00c49d21feba76a848f0f724e8510aa6910d82b
     return parser.parse_args()
