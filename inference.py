@@ -1,5 +1,6 @@
 from model import load_model
 import torch, pickle, main
+import numpy as np
 import pandas as pd
 from utils import get_inference_arguments
 
@@ -15,23 +16,27 @@ tokenizer = pickle.load(f)
 df = pd.read_csv(input_file)
 
 factors = df['factor'].tolist()
+expansions = df['expansion'].values
 print('Number of Factors = {}'.format(df.shape[0]))
 
-if torch.cuda.is_available():
-    accelerator = 'cuda'
-
 hidden_size = 320
-    
+
+if accelerator == 'cuda' and not torch.cuda.is_available():
+    print('CUDA enabled GPU not available. Switching Inference Acceleration to CPU')
+    accelerator = 'cpu'
+
+print('Accelerator = {}'.format(accelerator))
 device = torch.device(accelerator)
 
 model = load_model(tokenizer.vocab_dict, tokenizer.vocab_size, hidden_size, device, model_path)
 model.eval()
 model = model.to(device)
 
-def expand_polynomial(model, factors, tokenizer, device, max_length=31):
+def expand_polynomial(model, factors, tokenizer, device, max_length):
     expansions = []
-    for factor in factors:
+    for i, factor in enumerate(factors):
         input_ids = tokenizer.encode_expression(factor, max_length).view(-1, 1)
+        input_ids = input_ids.to(device)
         with torch.no_grad():
             outputs_encoder, hiddens, cells = model.encoder(input_ids)
         
@@ -52,12 +57,17 @@ def expand_polynomial(model, factors, tokenizer, device, max_length=31):
                 break
 
         expansion = tokenizer.decode_expression(outputs)
+        if (i + 1) % 20000 == 0:
+            print('{} samples processed.'.format(i + 1))
         expansions.append(expansion)
 
     return expansions
 
-expansions = expand_polynomial(model, factors[:20], tokenizer, device)
+predictions = expand_polynomial(model, factors, tokenizer, device, main.MAX_SEQUENCE_LENGTH + 2)
+predictions = np.array(predictions)
+print('Average Score on Validation Data of {} samples = {}'.format(df.shape[0], np.mean((predictions == expansions))))
 
-with open('expansions.txt', 'w') as f:
-    for factor, expansion in list(zip(factors[:20], expansions)):
-        f.write(f"{factor}={expansion}\n")
+
+# with open('expansions.txt', 'w') as f:
+#     for factor, expansion in list(zip(factors, expansions)):
+#         f.write(f"{factor}={expansion}\n")

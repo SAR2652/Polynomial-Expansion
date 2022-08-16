@@ -25,7 +25,7 @@ model_path = './models/new_encoder_decoder_model.pt'
 model = load_model(tokenizer.vocab_dict, tokenizer.vocab_size, hidden_size, device, model_path)
 model.eval()
 model = model.to(device)
-count = 0
+# count = 0
 
 print('Accelerator = {}'.format(accelerator))
 
@@ -76,11 +76,11 @@ def predict(factor: str):
         if output.argmax(1).item() == tokenizer.eos_token_id:
             break
     
-    global count
-    if count > 0 and (count + 1) % 100000 == 0:
-        print('{} samples processed'.format(count + 1))
+    # global count
+    # if count > 0 and (count + 1) % 100000 == 0:
+    #     print('{} samples processed'.format(count + 1))
 
-    count += 1
+    # count += 1
     expansion = tokenizer.decode_expression(outputs)
     return expansion
 
