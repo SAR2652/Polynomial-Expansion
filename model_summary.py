@@ -1,8 +1,5 @@
-import sys, torch, pickle
-sys.path.append('..')
-from main import load_file
+import torch, pickle
 from model import Encoder, Decoder
-from utils import Tokenizer
 from pytorch_model_summary import summary
 
 with open('./tokenizers/tokenizer.pickle', 'rb') as tok_binary:
