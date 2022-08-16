@@ -1,1 +1,1 @@
-python build_tokenizer.py ./data/train.txt ./tokenizers/tokenizer.pickle
+python build_tokenizer.py ./train.txt ./tokenizers/tokenizer.pickle

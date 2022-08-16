@@ -3,7 +3,7 @@ import pandas as pd
 from main import load_file
 from sklearn.model_selection import train_test_split
 
-factors, expansions = load_file('./data/train.txt')
+factors, expansions = load_file('./train.txt')
 
 X_train, X_val, y_train, y_val = train_test_split(factors, expansions, test_size = 0.2, random_state = 42)
 
