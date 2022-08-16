@@ -1,9 +1,29 @@
 import sys
 import numpy as np
 from typing import Tuple
+import torch, pickle
+from model import load_model
+
 
 MAX_SEQUENCE_LENGTH = 29
 TRAIN_URL = "https://scale-static-assets.s3-us-west-2.amazonaws.com/ml-interview/expand/train.txt"
+
+hidden_size = 320
+accelerator = 'cpu'
+
+if torch.cuda.is_available():
+    accelerator = 'cuda'
+    
+device = torch.device(accelerator)
+
+with open('./tokenizers/tokenizer.pickle', 'rb') as tok_binary:
+    tokenizer = pickle.load(tok_binary)
+
+model_path = './models/new_encoder_decoder_model.pt'
+
+model = load_model(tokenizer.vocab_dict, tokenizer.vocab_size, hidden_size, device, model_path)
+model.eval()
+model = model.to(device)
 
 
 def load_file(file_path: str) -> Tuple[Tuple[str], Tuple[str]]:
@@ -29,8 +49,31 @@ def score(true_expansion: str, pred_expansion: str) -> int:
 
 
 # --------- START OF IMPLEMENT THIS --------- #
-def predict(factors: str):
-    return factors
+def predict(factor: str):
+    max_length = MAX_SEQUENCE_LENGTH + 2
+    input_ids = tokenizer.encode_expression(factor, max_length).view(-1, 1)
+    
+    with torch.no_grad():
+        outputs_encoder, hiddens, cells = model.encoder(input_ids)
+        
+    outputs = [tokenizer.sos_token_id]
+
+    for _ in range(max_length):
+        previous_word = torch.LongTensor([outputs[-1]]).to(device)
+            
+        with torch.no_grad():
+            output, hiddens, cells = model.decoder(previous_word, outputs_encoder, hiddens, cells)
+            
+        best_guess = output.argmax(1).item()
+
+        outputs.append(best_guess)
+
+        # Model predicts it's the end of the sentence
+        if output.argmax(1).item() == tokenizer.eos_token_id:
+            break
+
+    expansion = tokenizer.decode_expression(outputs)
+    return expansion
 
 
 # --------- END OF IMPLEMENT THIS --------- #
