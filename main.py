@@ -52,6 +52,7 @@ def score(true_expansion: str, pred_expansion: str) -> int:
 def predict(factor: str):
     max_length = MAX_SEQUENCE_LENGTH + 2
     input_ids = tokenizer.encode_expression(factor, max_length).view(-1, 1)
+    input_ids = input_ids.to(device)
     
     with torch.no_grad():
         outputs_encoder, hiddens, cells = model.encoder(input_ids)

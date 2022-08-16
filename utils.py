@@ -1,5 +1,4 @@
-from pickle import NONE
-import re, torch, math, time, argparse
+import torch, math, time, argparse
 
 class Tokenizer:
     def __init__(self):
