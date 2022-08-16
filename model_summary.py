@@ -1,14 +1,12 @@
-import sys, torch
+import sys, torch, pickle
 sys.path.append('..')
 from main import load_file
 from model import Encoder, Decoder
 from utils import Tokenizer
 from pytorch_model_summary import summary
 
-factors, expressions = load_file('./data/train.txt')
-tokenizer = Tokenizer()
-tokenizer.expand_vocabulary(factors)
-tokenizer.expand_vocabulary(expressions)
+with open('./tokenizers/tokenizer.pickle', 'rb') as tok_binary:
+    tokenizer = pickle.load(tok_binary)
 
 hidden_size = 320
 
@@ -16,8 +14,8 @@ device = torch.device('cpu')
 
 max_seq_length = 31
 batch_size = 1
-encoder = Encoder(tokenizer.current_token_idx, hidden_size)
-decoder = Decoder(hidden_size, tokenizer.current_token_idx)
+encoder = Encoder(tokenizer.vocab_size, hidden_size)
+decoder = Decoder(hidden_size, tokenizer.vocab_size)
 f = open('network.txt', 'w')
 # Encoder
 print(summary(encoder, torch.zeros((max_seq_length, batch_size), dtype = torch.long)))
