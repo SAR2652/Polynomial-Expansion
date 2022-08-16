@@ -110,6 +110,10 @@ class Seq2Seq(nn.Module):
 
         for t in range(1, target_len):
             # At every time step use encoder_states and update hidden, cell
+            # print(x.shape)
+            # print(encoder_states.shape)
+            # print(hidden.shape)
+            # print(cell.shape)
             output, hidden, cell = self.decoder(x, encoder_states, hidden, cell)
 
             # Store prediction for current time step

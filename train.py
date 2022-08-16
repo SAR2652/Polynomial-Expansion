@@ -38,7 +38,7 @@ device = torch.device(accelerator)
 print('Training Accelerator: {}'.format(device))
 print('Model will run for {} epochs.'.format(epochs))
 
-train_dataset = PolynomialDataset(factors, expansions, tokenizer, main.MAX_SEQUENCE_LENGTH + 1)
+train_dataset = PolynomialDataset(factors, expansions, tokenizer, main.MAX_SEQUENCE_LENGTH + 2)
 batch_size = 16
 
 train_dataloader = DataLoader(train_dataset, shuffle = True, batch_size = batch_size)

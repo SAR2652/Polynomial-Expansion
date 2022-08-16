@@ -1,9 +1,7 @@
-from pickle import NONE
-import re, torch, math, time, argparse
+import torch, math, time, argparse
 
 class Tokenizer:
     def __init__(self):
-        self.pattern = re.compile(r'\w+|\d|\*{2}|\W')
         self.sos_token = '<s>'
         self.eos_token = '</s>'
         self.pad_token = '<pad>'
@@ -21,7 +19,7 @@ class Tokenizer:
     def expand_vocabulary(self, expressions):
         """Create Vocabulary, i.e. mapping for each unique token and its corresponding index"""
         for expression in expressions:
-            tokens = self.pattern.findall(expression)
+            tokens = list(expression)
             for token in tokens:
                 if token not in self.vocab_dict.keys():
                     self.vocab_dict[token] = self.current_token_idx
@@ -31,7 +29,7 @@ class Tokenizer:
         
     def convert_tokens_to_ids(self, expression):
         """Convert Tokens into their corresponding Integer mappings"""
-        tokens = self.pattern.findall(expression)
+        tokens = list(expression)
         input_ids = [self.vocab_dict[token] for token in tokens]
         return input_ids
 
@@ -65,8 +63,8 @@ class Tokenizer:
         return ''.join([self.id_dict[id] for id in expression if id not in special_token_ids])
 
     def validate(self):
-        for key, value in self.vocab_dict.items():
-            if self.id_dict[value] != key:
+        for k, v in self.vocab_dict.items():
+            if self.id_dict[v] != k:
                 return False
         return True
 
@@ -106,4 +104,5 @@ def get_inference_arguments():
     parser.add_argument('--tokenizer_filepath', type=str, help = 'Path to load tokenizer file', default = './tokenizers/tokenizer.pickle')
     parser.add_argument('--model_path', type=str, help = 'Path to saved model state dictionary', default = './models/new_encoder_decoder_model.pt')
     parser.add_argument('--hidden_size', type=str, help = 'Number of neurons in hidden layer', default = 320)
+    parser.add_argument('--accelerator', type=str, help = 'Device to speed up inference', default = 'cpu')
     return parser.parse_args()
