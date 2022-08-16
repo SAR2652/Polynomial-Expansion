@@ -16,7 +16,6 @@ if torch.cuda.is_available():
    
 device = torch.device(accelerator)
 
-
 with open('./tokenizers/tokenizer.pickle', 'rb') as tok_binary:
     tokenizer = pickle.load(tok_binary)
 
@@ -27,7 +26,7 @@ model.eval()
 model = model.to(device)
 # count = 0
 
-print('Accelerator = {}'.format(accelerator))
+# print('Accelerator = {}'.format(accelerator))
 
 def load_file(file_path: str) -> Tuple[Tuple[str], Tuple[str]]:
     """ A helper functions that loads the file into a tuple of strings

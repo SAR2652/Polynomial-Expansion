@@ -69,5 +69,5 @@ print('Average Score on Validation Data of {} samples = {}'.format(df.shape[0], 
 
 
 # with open('expansions.txt', 'w') as f:
-#     for factor, expansion in list(zip(factors, expansions)):
+#     for factor, expansion in list(zip(factors, predictions)):
 #         f.write(f"{factor}={expansion}\n")
