@@ -1,5 +1,4 @@
 import time, torch, pickle
-from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 import torch.nn as nn
 from torch import optim
