@@ -117,6 +117,26 @@ class LSTMLayer:
         return h_t, c_t, outputs
 
 
+class Encoder:
+    def __init__(self, vocab_size: int, embed_dim: int, hidden_dim: int,
+                 prng_key):
+
+        self.embed_dim = embed_dim
+        self.hidden_dim = hidden_dim
+
+        k1, k2 = random.split(prng_key, 2)
+        self.embedding = random.normal(k1, (vocab_size, embed_dim))
+        self.lstm = LSTMLayer(embed_dim, hidden_dim, k2)
+
+    def __call__(self, x):
+
+        embedding = self.embedding[x]
+
+        hidden, cell, encoder_outputs = self.lstm(embedding)
+
+        return hidden, cell, encoder_outputs
+
+
 class BahdanauAttention:
     def __init__(self, hidden_dim: int, attention_dim: int, prng_key):
         self.hidden_dim = hidden_dim
@@ -186,6 +206,63 @@ class DecoderWithBahdanauAttention:
         output = jnp.dot(hidden_state, self.W_fc) + self.b_fc
 
         return output, hidden_state, cell_state, attention_weights
+
+
+class Seq2Seq:
+    def __init__(self, encoder, decoder, vocab_dict):
+        super(Seq2Seq, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.vocab_dict = vocab_dict
+
+    def forward(self, source, target, rng_key, teacher_force_ratio=0.5):
+        batch_size = source.shape[0]
+        target_len = target.shape[1]
+        target_vocab_size = len(self.vocab_dict)
+
+        outputs = jnp.zeros(batch_size, target_len, target_vocab_size)
+        # print('Source Shape = ', source.shape)
+        hidden, cell, encoder_states = self.encoder(source)
+
+        # First input will be <SOS> token
+        x = target[0]
+
+        for t in range(1, target_len):
+            # At every time step use encoder_states and update hidden, cell
+            # print(x.shape)
+            # print(encoder_states.shape)
+            # print(hidden.shape)
+            # print(cell.shape)
+            output, hidden, cell = self.decoder(x, hidden, cell,
+                                                encoder_states)
+
+            # Store prediction for current time step
+            outputs = outputs.at[t].set(output)
+
+            # Get the best word the Decoder predicted (index in the vocabulary)
+            best_guess = jnp.argmax(output, axis=1)
+
+            # With probability of teacher_force_ratio we take the actual next
+            # word otherwise we take the word that the Decoder predicted it to
+            # be. Teacher Forcing is used so that the model gets used to seeing
+            # similar inputs at training and testing time, if teacher forcing
+            # is 1 then inputs at test time might be completely different than
+            # what the network is used to. This was a long comment.
+            rng_key, subkey = random.split(rng_key)
+            use_teacher_force = random.uniform(subkey) < teacher_force_ratio
+
+            x = jnp.where(use_teacher_force, target[t], best_guess)
+
+        return outputs
+
+
+def create_model(vocab_dict: dict, embed_dim: int, hidden_dim: int, prng_key):
+    vocab_size = len(vocab_dict)
+    encoder = Encoder(vocab_size, embed_dim, hidden_dim, prng_key)
+    decoder = DecoderWithBahdanauAttention(vocab_size, embed_dim, hidden_dim,
+                                           prng_key)
+    model = Seq2Seq(encoder, decoder, vocab_dict)
+    return model
 
 
 class MultiHeadAttention:

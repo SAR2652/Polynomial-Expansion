@@ -1,12 +1,15 @@
 from torch.utils.data import Dataset    # type: ignore
 
+
 class PolynomialDataset(Dataset):
-    def __init__(self, factors, expansions, tokenizer, max_seq_length):
+    def __init__(self, factors, expansions, tokenizer, max_seq_length,
+                 framework: str = 'pytorch'):
         self.factors = factors
         self.expansions = expansions
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
-        
+        self.framework = framework
+
     def __len__(self):
         return min(len(self.factors), len(self.expansions))
 
@@ -20,10 +23,11 @@ class PolynomialDataset(Dataset):
         item = dict()
         item['factor'] = factor
         item['expansion'] = expansion
+        item['input_ids'] = factor_input_ids
+        item['target_ids'] = expansion_label_ids
         # print('Factor = {}'.format(factor))
-        item['input_ids'] = factor_input_ids.view(-1, 1)
-        item['labels'] = expansion_label_ids.view(-1, 1)
+        if self.framework == 'pytorch':
+            item['input_ids'] = item['input_ids'].view(-1, 1)
+            item['target_ids'] = item['target_ids'].view(-1, 1)
         item['vocabulary'] = self.tokenizer.vocab_dict
         return item
-    
-    

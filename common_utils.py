@@ -1,6 +1,5 @@
-import torch    # type: ignore
-import jax.numpy as jnp     # type: ignore
-from functools import partial
+import joblib   # type: ignore
+import pickle
 from typing import Tuple, Iterable
 
 
@@ -17,6 +16,8 @@ def load_file(file_path: str) -> Tuple[Tuple[str], Tuple[str]]:
 
 
 class Tokenizer:
+    MAX_POLYNOMIAL_LENGTH = 29
+    MAX_SEQUENCE_LENGTH = MAX_POLYNOMIAL_LENGTH + 2    # start & end tokens
     sos_token = '<s>'
     eos_token = '</s>'
     pad_token = '<pad>'
@@ -24,20 +25,14 @@ class Tokenizer:
     eos_token_id = 1
     pad_token_id = 2
     current_token_idx = 3
-    vocab_dict = dict()
-    vocab_dict[sos_token] = sos_token_id
-    vocab_dict[eos_token] = eos_token_id
-    vocab_dict[pad_token] = pad_token_id
 
-    def __init__(self, framework: str='pytorch'):
+    def __init__(self, framework):
+        self.vocab_dict = dict()
+        self.vocab_dict[self.sos_token] = self.sos_token_id
+        self.vocab_dict[self.eos_token] = self.eos_token_id
+        self.vocab_dict[self.pad_token] = self.pad_token_id
         self.vocab_size = len(self.vocab_dict)
         self.id_dict = dict((v, k) for k, v in self.vocab_dict.items())
-        if framework == 'pytorch':
-            tensor_long = partial(torch.tensor, dtype=torch.long)
-        elif framework == 'jax':
-            tensor_long = partial(jnp.asarray, dtype=jnp.int64)
-
-        self.return_type_convert = tensor_long
 
     def expand_vocabulary(self, expressions: Iterable):
         """Create Vocabulary, i.e. mapping for each unique token and its
@@ -50,7 +45,7 @@ class Tokenizer:
                     self.id_dict[self.current_token_idx] = token
                     self.current_token_idx += 1
         self.vocab_size = len(self.vocab_dict)
-        
+
     def convert_tokens_to_ids(self, expression):
         """Convert Tokens into their corresponding Integer mappings"""
         tokens = list(expression)
@@ -71,9 +66,7 @@ class Tokenizer:
         factor_input_ids.extend([self.pad_token_id] * factor_padding_length)
         expansion_label_ids.extend([self.pad_token_id] *
                                    expansion_padding_length)
-        factor_inputs = self.return_type_convert(factor_input_ids)
-        expansion_inputs = self.return_type_convert(expansion_label_ids)
-        return factor_inputs, expansion_inputs
+        return factor_input_ids, expansion_label_ids
 
     def encode_expression(self, expression, max_seq_length):
         """Encode a single expression into its corresponding numeric ids"""
@@ -82,7 +75,7 @@ class Tokenizer:
         input_ids.append(self.eos_token_id)
         padding_length = max_seq_length - len(input_ids)
         input_ids.extend([self.pad_token_id] * padding_length)
-        return self.return_type_convert(input_ids)
+        return input_ids
 
     def decode_expression(self, expression):
         """Convert IDs to their corresponding tokens"""
@@ -96,6 +89,15 @@ class Tokenizer:
             if self.id_dict[v] != k:
                 return False
         return True
+
+
+def load_tokenizer(tokenizer_filepath: str):
+    if tokenizer_filepath.endswith('.pickle'):
+        with open(tokenizer_filepath, 'rb') as tokenizer_binary:
+            tokenizer = pickle.load(tokenizer_binary)
+    elif tokenizer_filepath.endswith('.joblib'):
+        tokenizer = joblib.load(tokenizer_filepath)
+    return tokenizer
 
 
 def score(true_expansion: str, pred_expansion: str) -> int:

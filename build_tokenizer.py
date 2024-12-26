@@ -9,7 +9,7 @@ def get_vocabulary_arguments():
     parser.add_argument('--input_filepath',
                         type=str,
                         help='Path to Input File',
-                        default='./train.txt')
+                        default='./data/train.txt')
     parser.add_argument('--output_dir',
                         type=str,
                         help='Directory to save tokenizer file',
@@ -24,7 +24,7 @@ def build_tokenizer(args):
 
     factors, expressions = load_file(input_file)
 
-    tokenizer = Tokenizer()
+    tokenizer = Tokenizer('jax')
     tokenizer.expand_vocabulary(factors)
     tokenizer.expand_vocabulary(expressions)
 
