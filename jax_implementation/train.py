@@ -38,7 +38,7 @@ def get_training_arguments():
                         default='./output')
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=32)
+                        type=int, default=128)
     parser.add_argument('--epochs',
                         type=int,
                         help='Number of Epochs to train the model',
