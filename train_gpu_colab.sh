@@ -1,2 +1,2 @@
-python -m jax_implementation.train --input_filepath /content/drive/MyDrive/polynomial_expansion/training.csv --output_dir /content/drive/MyDrive/polynomial_expansion/output --tokenizer_filepath /content/drive/MyDrive/polynomial_expansion/output/tokenizer.joblib
+python -m jax_implementation.train --input_filepath /content/drive/MyDrive/polynomial_expansion/output/training.csv --output_dir /content/drive/MyDrive/polynomial_expansion/output --tokenizer_filepath /content/drive/MyDrive/polynomial_expansion/output/tokenizer.joblib
 # python train.py ./data/training.csv --accelerator cuda --hidden_size 320 --model_path /content/drive/MyDrive/new_encoder_decoder_model.pt --tokenizer_filepath ./tokenizers/tokenizer.pickle --epochs 200
