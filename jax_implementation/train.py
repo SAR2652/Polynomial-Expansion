@@ -172,7 +172,7 @@ def train_model(epochs, number_of_batches, embed_size, hidden_size, vocab_dict,
 
             total_loss += loss
 
-            if (i + 1) % (number_of_batches // 100) == 0:
+            if (i + 1) % (number_of_batches // 10) == 0:
                 print(f'Processed {i + 1} batches!')
 
         avg_loss = total_loss / len(train_dataloader)
@@ -248,6 +248,7 @@ def save_model_params(model_params: tuple, output_dir: str, epoch: str):
 def train(args):
     input_file = args.input_filepath
     output_dir = args.output_dir
+    os.makedirs(output_dir, exist_ok=True)
     random_state = args.random_state
     embed_size = args.embed_size
     hidden_size = args.hidden_size
