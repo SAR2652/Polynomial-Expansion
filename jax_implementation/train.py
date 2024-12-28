@@ -25,26 +25,26 @@ def get_training_arguments():
                         type=int, default=42)
     parser.add_argument('--embed_size',
                         help='Size of embedding',
-                        type=int, default=32)
+                        type=int, default=128)
     parser.add_argument('--hidden_size',
                         type=int,
                         help='Number of Neurons in Hidden Layers',
-                        default=32)
+                        default=128)
     parser.add_argument('--learning_rate',
                         type=int,
                         help='Learning Rate at which the model is to be '
-                        'trained', default=1e-3)
+                        'trained', default=2e-3)
     parser.add_argument('--output_dir',
                         type=str,
                         help='Directory to save output',
                         default='./output')
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=512)
+                        type=int, default=1024)
     parser.add_argument('--epochs',
                         type=int,
                         help='Number of Epochs to train the model',
-                        default=5)
+                        default=50)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -211,8 +211,8 @@ def train_model(model_params, epochs, number_of_batches,
 
             total_loss += loss
 
-            # if (i + 1) % (number_of_batches // 10) == 0:
-            #     print(f'Processed {i + 1} batches!')
+            if (i + 1) % (number_of_batches // 10) == 0:
+                print(f'Processed {i + 1} batches!')
 
         avg_loss = total_loss / len(train_dataloader)
         print(f'Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}')
