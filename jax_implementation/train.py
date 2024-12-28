@@ -29,22 +29,22 @@ def get_training_arguments():
     parser.add_argument('--hidden_size',
                         type=int,
                         help='Number of Neurons in Hidden Layers',
-                        default=128)
+                        default=64)
     parser.add_argument('--learning_rate',
                         type=int,
                         help='Learning Rate at which the model is to be '
-                        'trained', default=2e-3)
+                        'trained', default=5e-3)
     parser.add_argument('--output_dir',
                         type=str,
                         help='Directory to save output',
                         default='./output')
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=1024)
+                        type=int, default=512)
     parser.add_argument('--epochs',
                         type=int,
                         help='Number of Epochs to train the model',
-                        default=50)
+                        default=4)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -54,8 +54,7 @@ def get_training_arguments():
     return parser.parse_args()
 
 
-def save_model_params(model_params, output_dir: str,
-                      epoch: str):
+def save_model_params(model_params, output_dir: str, epoch: str):
 
     encoder_params, decoder_params = model_params
 
@@ -194,7 +193,10 @@ def train_model(model_params, epochs, number_of_batches,
 
     prng_key = random.PRNGKey(random_state)
     encoder, decoder = create_model(hidden_size)
-    optimizer = optax.adam(learning_rate)
+    optimizer = optax.chain(
+        optax.clip_by_block_rms(1),
+        optax.adam(learning_rate)
+    )
     optimizer_state = optimizer.init(model_params)
 
     best_loss = float('inf')
@@ -211,8 +213,8 @@ def train_model(model_params, epochs, number_of_batches,
 
             total_loss += loss
 
-            if (i + 1) % (number_of_batches // 10) == 0:
-                print(f'Processed {i + 1} batches!')
+            if (i + 1) % (number_of_batches // 100) == 0:
+                print(f'Running Loss after {i + 1} batches = {total_loss:.4f}')
 
         avg_loss = total_loss / len(train_dataloader)
         print(f'Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}')
@@ -241,7 +243,7 @@ def train(args):
     teacher_force_ratio = args.teacher_force_ratio
 
     df = pd.read_csv(input_file)
-    df = df.iloc[:25600, :]
+    # df = df.iloc[:12800, :]
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()

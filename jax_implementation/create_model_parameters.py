@@ -104,10 +104,10 @@ def get_arguments():
                         type=str, default='./output/tokenizer.joblib')
     parser.add_argument('--embed_dim',
                         help='Dimension of Input Embedding',
-                        type=int, default=128)
+                        type=int, default=64)
     parser.add_argument('--hidden_dim',
                         help='Number of neurons in hidden layers',
-                        type=int, default=128)
+                        type=int, default=64)
     parser.add_argument('--random_state',
                         help='Random state for initialization',
                         type=int, default=42)
