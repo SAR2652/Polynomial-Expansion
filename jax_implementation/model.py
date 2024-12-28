@@ -5,77 +5,30 @@ from jax.lax import reshape, batch_matmul     # type: ignore
 
 
 class LSTMCell:
-    def __init__(self, input_dim: int, hidden_dim: int, prng_key):
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
+    def __init__(self):
+        pass
 
-        # Initial Hidden State and Context Vector
-        self.h_prev = jnp.zeros((hidden_dim,))
-        self.c_prev = jnp.zeros((hidden_dim,))
+    def __call__(self, x_t, h_prev, c_prev, params):
 
-        k1, k2, k3, k4, k5, k6, k7, k8 = random.split(prng_key, 8)
-
-        """Forget Gate"""
-
-        """Part 1: Weights and Bias to remove info from context that is no
-        longer needed"""
-
-        # For hidden state
-        self.U_f = random.normal(k1, (hidden_dim, hidden_dim))
-        self.b1_f = random.normal(k1, (hidden_dim,))
-
-        # For current input
-        self.W_f = random.normal(k2, (input_dim, hidden_dim))
-        self.b2_f = random.normal(k2, (hidden_dim,))
-
-        """Part 2: Weights and Bias to extract info from previous hidden state
-        and current inputs"""
-
-        # For hidden state
-        self.U_g = random.normal(k3, (hidden_dim, hidden_dim))
-        self.b1_g = random.normal(k3, (hidden_dim,))
-
-        # For current input
-        self.W_g = random.normal(k4, (input_dim, hidden_dim))
-        self.b2_g = random.normal(k4, (hidden_dim,))
-
-        """Add Gate: Weights and Bias to select information to add to current
-        context"""
-
-        # For hidden state
-        self.U_i = random.normal(k5, (hidden_dim, hidden_dim))
-        self.b1_i = random.normal(k5, (hidden_dim,))
-
-        # For current input
-        self.W_i = random.normal(k6, (input_dim, hidden_dim))
-        self.b2_i = random.normal(k6, (hidden_dim,))
-
-        """Output Gate: Weights and Bias to decide information needed for
-        current state"""
-
-        # For hidden state
-        self.U_o = random.normal(k7, (hidden_dim, hidden_dim))
-        self.b1_o = random.normal(k7, (hidden_dim,))
-
-        # For current input
-        self.W_o = random.normal(k8, (input_dim, hidden_dim))
-        self.b2_o = random.normal(k8, (hidden_dim,))
-
-    def __call__(self, x_t, h_prev, c_prev):
-
-        temp1 = jnp.dot(h_prev, self.U_f) + self.b1_f
-        temp2 = jnp.dot(x_t, self.W_f) + self.b2_f
+        temp1 = jnp.dot(h_prev, params['lstm']['cell']['U_f']) + \
+            params['lstm']['cell']['b1_f']
+        temp2 = jnp.dot(x_t, params['lstm']['cell']['W_f']) + \
+            params['lstm']['cell']['b1_f']
         temp_sum1 = temp1 + temp2
         f_t = jax.nn.sigmoid(temp_sum1)
         k_t = f_t * c_prev
 
-        temp3 = jnp.dot(h_prev, self.U_g) + self.b1_g
-        temp4 = jnp.dot(x_t, self.W_g) + self.b2_g
+        temp3 = jnp.dot(h_prev, params['lstm']['cell']['U_g']) + \
+            params['lstm']['cell']['b1_g']
+        temp4 = jnp.dot(x_t, params['lstm']['cell']['W_g']) + \
+            params['lstm']['cell']['b2_g']
         temp_sum2 = temp3 + temp4
         g_t = jnp.tanh(temp_sum2)
 
-        temp5 = jnp.dot(h_prev, self.U_i) + self.b1_i
-        temp6 = jnp.dot(x_t, self.W_i) + self.b2_i
+        temp5 = jnp.dot(h_prev, params['lstm']['cell']['U_i']) + \
+            params['lstm']['cell']['b1_i']
+        temp6 = jnp.dot(x_t, params['lstm']['cell']['W_i']) + \
+            params['lstm']['cell']['b2_i']
         temp_sum3 = temp5 + temp6
         i_t = jnp.tanh(temp_sum3)
 
@@ -83,8 +36,10 @@ class LSTMCell:
 
         c_t = j_t + k_t
 
-        temp7 = jnp.dot(h_prev, self.U_o) + self.b1_o
-        temp8 = jnp.dot(x_t, self.W_o) + self.b2_o
+        temp7 = jnp.dot(h_prev, params['lstm']['cell']['U_o']) + \
+            params['lstm']['cell']['b1_o']
+        temp8 = jnp.dot(x_t, params['lstm']['cell']['W_o']) + \
+            params['lstm']['cell']['b2_o']
         temp_sum4 = temp7 + temp8
         o_t = jnp.tanh(temp_sum4)
 
@@ -94,13 +49,11 @@ class LSTMCell:
 
 
 class LSTMLayer:
-    def __init__(self, input_dim: int, hidden_dim: int, prng_key):
-
-        self.input_dim = input_dim
+    def __init__(self, hidden_dim):
+        self.cell = LSTMCell()
         self.hidden_dim = hidden_dim
-        self.cell = LSTMCell(input_dim, hidden_dim, prng_key)
 
-    def __call__(self, x, h_0=None, c_0=None):
+    def __call__(self, x, params, h_0=None, c_0=None,):
 
         batch_size, seq_len, _ = x.shape
         h_t = jnp.zeros((batch_size, self.hidden_dim)) if h_0 is None else h_0
@@ -109,7 +62,7 @@ class LSTMLayer:
         outputs = list()
 
         for t in range(seq_len):
-            h_t, c_t = self.cell(x[:, t, :], h_t, c_t)
+            h_t, c_t = self.cell(x[:, t, :], h_t, c_t, params)
             outputs.append(h_t)
 
         outputs = jnp.stack(outputs, axis=1)
@@ -118,38 +71,23 @@ class LSTMLayer:
 
 
 class Encoder:
-    def __init__(self, vocab_size: int, embed_dim: int, hidden_dim: int,
-                 prng_key):
+    def __init__(self, hidden_dim):
+        self.lstm = LSTMLayer(hidden_dim)
 
-        self.embed_dim = embed_dim
-        self.hidden_dim = hidden_dim
+    def __call__(self, params, x):
 
-        k1, k2 = random.split(prng_key, 2)
-        self.embedding = random.normal(k1, (vocab_size, embed_dim))
-        self.lstm = LSTMLayer(embed_dim, hidden_dim, k2)
+        embedding = params['embedding'][x]
 
-    def __call__(self, x):
-
-        embedding = self.embedding[x]
-
-        hidden, cell, encoder_outputs = self.lstm(embedding)
+        hidden, cell, encoder_outputs = self.lstm(embedding, params)
 
         return hidden, cell, encoder_outputs
 
 
 class BahdanauAttention:
-    def __init__(self, hidden_dim: int, attention_dim: int, prng_key):
+    def __init__(self, hidden_dim):
         self.hidden_dim = hidden_dim
-        self.attention_dim = attention_dim
 
-        k1, k2, k3, k4, k5 = random.split(prng_key, 5)
-        self.W_h = random.normal(k1, (hidden_dim, attention_dim))
-        self.b_h = random.normal(k2, (hidden_dim,))
-        self.W_c = random.normal(k3, (hidden_dim, attention_dim))
-        self.b_c = random.normal(k4, (hidden_dim,))
-        self.V = random.normal(k5, (attention_dim, 1))
-
-    def __call__(self, hidden_state, encoder_outputs):
+    def __call__(self, hidden_state, encoder_outputs, decoder_params):
 
         batch_size, seq_len, _ = encoder_outputs.shape
 
@@ -160,13 +98,16 @@ class BahdanauAttention:
                                         (batch_size, seq_len, self.hidden_dim))
 
         # (batch_size, seq_len, attention_dim)
-        temp1 = jnp.dot(encoder_outputs, self.W_h) + self.b_h
+        temp1 = jnp.dot(encoder_outputs, decoder_params['attention']['W_h']) \
+            + decoder_params['attention']['b_h']
 
         # (batch_size, seq_len, attention_dim)
-        temp2 = jnp.dot(hidden_state, self.W_c) + self.b_c
+        temp2 = jnp.dot(hidden_state, decoder_params['attention']['W_c']) + \
+            decoder_params['attention']['b_c']
         temp_sum = temp1 + temp2
         temp_out = jnp.tanh(temp_sum)
-        score = jnp.squeeze(jnp.dot(temp_out, self.V), -1)
+        score = jnp.squeeze(jnp.dot(temp_out,
+                                    decoder_params['attention']['V']), -1)
         attention_weights = jax.nn.softmax(score)
 
         context_vector = batch_matmul(jnp.expand_dims(attention_weights, 1),
@@ -176,93 +117,38 @@ class BahdanauAttention:
 
 
 class DecoderWithBahdanauAttention:
-    def __init__(self, vocab_size: int, embed_dim: int, hidden_dim: int,
-                 prng_key):
-        self.vocab_size = vocab_size
-        self.embed_dim = embed_dim
-        self.hidden_dim = hidden_dim
+    def __init__(self, hidden_dim):
+        self.attention = BahdanauAttention(hidden_dim)
+        self.lstm = LSTMLayer(hidden_dim)
 
-        k1, k2, k3, k4, k5 = random.split(prng_key, 5)
+    def __call__(self, input_token, hidden_state, cell_state, encoder_outputs,
+                 params):
 
-        self.embedding = random.normal(k1, (vocab_size, embed_dim))
-        self.attention = BahdanauAttention(hidden_dim, hidden_dim, k2)
-        self.lstm = LSTMCell(embed_dim + hidden_dim, hidden_dim, k3)
-        self.W_fc = random.normal(k4, (hidden_dim, vocab_size))
-        self.b_fc = random.normal(k5, (vocab_size,))
+        input_embedding = params['embedding'][input_token]
 
-    def __call__(self, input_token, hidden_state, cell_state, encoder_outputs):
+        context_vector, attention_weights = self.attention(
+             hidden_state, encoder_outputs, params
+        )
 
-        input_embedding = self.embedding[input_token]
-
-        context_vector, attention_weights = self.attention(hidden_state,
-                                                           encoder_outputs)
+        context_vector = jnp.expand_dims(context_vector, axis=1)
+        input_embedding = jnp.expand_dims(input_embedding, axis=1)
 
         lstm_input = jnp.concatenate((input_embedding, context_vector),
                                      axis=-1)
 
-        hidden_state, cell_state = self.lstm(lstm_input, hidden_state,
-                                             cell_state)
+        hidden_state, cell_state, _ = self.lstm(lstm_input, params,
+                                                hidden_state, cell_state)
 
-        output = jnp.dot(hidden_state, self.W_fc) + self.b_fc
+        output = jnp.dot(hidden_state, params['W_fc']) + \
+            params['b_fc']
 
         return output, hidden_state, cell_state, attention_weights
 
 
-class Seq2Seq:
-    def __init__(self, encoder, decoder, vocab_dict):
-        super(Seq2Seq, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-        self.vocab_dict = vocab_dict
-
-    def forward(self, source, target, rng_key, teacher_force_ratio=0.5):
-        batch_size = source.shape[0]
-        target_len = target.shape[1]
-        target_vocab_size = len(self.vocab_dict)
-
-        outputs = jnp.zeros(batch_size, target_len, target_vocab_size)
-        # print('Source Shape = ', source.shape)
-        hidden, cell, encoder_states = self.encoder(source)
-
-        # First input will be <SOS> token
-        x = target[0]
-
-        for t in range(1, target_len):
-            # At every time step use encoder_states and update hidden, cell
-            # print(x.shape)
-            # print(encoder_states.shape)
-            # print(hidden.shape)
-            # print(cell.shape)
-            output, hidden, cell = self.decoder(x, hidden, cell,
-                                                encoder_states)
-
-            # Store prediction for current time step
-            outputs = outputs.at[t].set(output)
-
-            # Get the best word the Decoder predicted (index in the vocabulary)
-            best_guess = jnp.argmax(output, axis=1)
-
-            # With probability of teacher_force_ratio we take the actual next
-            # word otherwise we take the word that the Decoder predicted it to
-            # be. Teacher Forcing is used so that the model gets used to seeing
-            # similar inputs at training and testing time, if teacher forcing
-            # is 1 then inputs at test time might be completely different than
-            # what the network is used to. This was a long comment.
-            rng_key, subkey = random.split(rng_key)
-            use_teacher_force = random.uniform(subkey) < teacher_force_ratio
-
-            x = jnp.where(use_teacher_force, target[t], best_guess)
-
-        return outputs
-
-
-def create_model(vocab_dict: dict, embed_dim: int, hidden_dim: int, prng_key):
-    vocab_size = len(vocab_dict)
-    encoder = Encoder(vocab_size, embed_dim, hidden_dim, prng_key)
-    decoder = DecoderWithBahdanauAttention(vocab_size, embed_dim, hidden_dim,
-                                           prng_key)
-    model = Seq2Seq(encoder, decoder, vocab_dict)
-    return model
+def create_model(hidden_dim):
+    encoder = Encoder(hidden_dim)
+    decoder = DecoderWithBahdanauAttention(hidden_dim)
+    return encoder, decoder
 
 
 class MultiHeadAttention:

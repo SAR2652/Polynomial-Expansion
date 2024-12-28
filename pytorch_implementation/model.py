@@ -71,7 +71,8 @@ class Decoder(nn.Module):
         # attention: (seq_length, N, 1), snk
         # encoder_states: (seq_length, N, hidden_size*2), snl
         # we want context_vector: (1, N, hidden_size*2), i.e knl
-        context_vector = torch.einsum("snk,snl->knl", attention, encoder_states)
+        context_vector = torch.einsum("snk,snl->knl", attention,
+                                      encoder_states)
 
         # print('Context Vector = ', context_vector.shape)
         # print('Embedding Shape = ', embedding.shape)

@@ -1,5 +1,6 @@
 import joblib   # type: ignore
 import pickle
+import numpy as np
 from typing import Tuple, Iterable
 
 
@@ -84,6 +85,13 @@ class Tokenizer:
         return ''.join([self.id_dict[id] for id in expression if id not in
                         special_token_ids])
 
+    def batch_decode_expressions(self, expressions):
+        """Convert IDs to their corresponding tokens"""
+        special_token_ids = [self.sos_token_id, self.eos_token_id,
+                             self.pad_token_id]
+        return [''.join([self.id_dict[id] for id in expression if id not in
+                        special_token_ids]) for expression in expressions]
+
     def validate(self):
         for k, v in self.vocab_dict.items():
             if self.id_dict[v] != k:
@@ -108,3 +116,13 @@ def score(true_expansion: str, pred_expansion: str) -> int:
     :return:
     """
     return int(true_expansion == pred_expansion)
+
+
+def collate_fn(batch):
+    # Batch shape: (seq_len, batch_size) -> (batch_size, seq_len)
+    input_ids = [item["input_ids"] for item in batch]
+    target_ids = [item["target_ids"] for item in batch]
+    # print(input_ids)
+    # print(target_ids)
+    return np.stack(input_ids).transpose(0, 1), \
+        np.stack(target_ids).transpose(0, 1)
