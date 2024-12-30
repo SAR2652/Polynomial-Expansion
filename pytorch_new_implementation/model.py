@@ -1,4 +1,6 @@
 import torch
+import random
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -195,14 +197,19 @@ class Seq2SeqModel(nn.Module):
             self.encoder(inputs)
 
         batch_size, _, _ = encoder_outputs.shape
-        use_teacher_forcing = torch.rand(batch_size) < teacher_force_ratio
-        use_teacher_forcing = use_teacher_forcing.to(self.device)
+        use_teacher_forcing = random.random() < teacher_force_ratio
+        use_teacher_forcing = torch.tensor([use_teacher_forcing] *
+                                           batch_size).to(self.device)
 
         decoder_input = torch.tensor([self.sos_token_id] * batch_size,
                                      dtype=torch.int32).to(self.device)
 
         outputs = torch.zeros(batch_size, self.target_len,
                               self.vocab_size).to(self.device)
+        # best_guesses = np.array
+
+        if eval:
+            best_guesses = np.zeros((batch_size, self.target_len))
 
         for t in range(1, self.target_len):
 
@@ -223,6 +230,13 @@ class Seq2SeqModel(nn.Module):
                 ).squeeze(1)
             else:
                 decoder_input = best_guess
+                best_guess_np = best_guess.detach().cpu().numpy()
+                best_guesses[:, t] = best_guess_np
+                print(best_guesses)
+                # best_guesses.append(best_guess.item())
 
         # print(outputs.shape)
-        return outputs
+        if not eval:
+            return outputs
+        else:
+            return outputs, best_guesses

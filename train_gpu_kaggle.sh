@@ -4,7 +4,8 @@ python -m pytorch_new_implementation.train \
     --tokenizer_filepath /kaggle/input/polynomialexpansion/tokenizer.joblib \
     --hidden_dim 128 \
     --embed_dim 128 \
-    --epochs 50
+    --epochs 50 \
+    --batch_size 1536
 
 # python -m jax_implementation.train \
 #     --input_filepath /kaggle/input/polynomialexpansion/training.csv \

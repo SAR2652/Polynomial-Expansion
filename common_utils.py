@@ -122,7 +122,10 @@ def collate_fn(batch):
     # Batch shape: (seq_len, batch_size) -> (batch_size, seq_len)
     input_ids = [item["input_ids"] for item in batch]
     target_ids = [item["target_ids"] for item in batch]
+    factors = [item['factor'] for item in batch]
+    expansions = [item['expansion'] for item in batch]
     # print(input_ids)
     # print(target_ids)
+
     return np.stack(input_ids).transpose(0, 1), \
-        np.stack(target_ids).transpose(0, 1)
+        np.stack(target_ids).transpose(0, 1), factors, expansions

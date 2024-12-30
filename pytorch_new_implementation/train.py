@@ -26,14 +26,14 @@ def get_arguments():
                         type=float, default=1e-3)
     parser.add_argument('--epochs',
                         help='Number of training epochs',
-                        type=int, default=50)
+                        type=int, default=100)
     parser.add_argument('--output_dir',
                         type=str,
                         help='Directory to save output',
                         default='./output')
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=1024)
+                        type=int, default=1536)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -46,6 +46,12 @@ def get_arguments():
     parser.add_argument('--fca',
                         help='Force CPU Acceleration',
                         action='store_true')
+    parser.add_argument('--continue_from_ckpt',
+                        help='Continue model training from a previous '
+                        'checkpoint',
+                        action='store_true')
+    parser.add_argument('--ckpt_file',
+                        help='Checkpoint to continue model training from')
     return parser.parse_args()
 
 
@@ -104,10 +110,11 @@ def train_model(args):
         batch_losses = list()
 
         for i, batch in enumerate(train_dataloader):
+            print(f'Batch {i + 1}')
 
             optimizer.zero_grad()
 
-            inputs, targets = batch
+            inputs, targets, _, _ = batch
             inputs = torch.from_numpy(inputs).type(torch.LongTensor) \
                 .to(device, non_blocking=True)
             targets = torch.from_numpy(targets).type(torch.LongTensor) \
@@ -115,8 +122,8 @@ def train_model(args):
             outputs = model(inputs, teacher_force_ratio, targets)
 
             # get rid of SOS token
-            # outputs = outputs[:, 1:, :]
-            # targets = targets[:, 1:]
+            outputs = outputs[:, :, 1:]
+            targets = targets[:, 1:]
             # print(outputs.shape)
             # print(targets.shape)
 
@@ -130,16 +137,20 @@ def train_model(args):
             running_loss += loss.item()
             batch_losses.append(loss.item())
 
-            if (i + 1) % 100 == 0:
+            if (i + 1) % 10 == 0:
                 print(f'Running Loss after {i + 1} batches = '
                       f'{running_loss:.4f}')
 
         epoch_loss = running_loss / len(train_dataloader)
-        print(f'Epoch {epoch}: Loss = {epoch_loss:.4f}')
+        print(f'Epoch {epoch + 1}: Loss = {epoch_loss:.4f}')
 
         if epoch_loss < min_avg_loss:
             min_avg_loss = epoch_loss
-            torch.save(model.state_dict(), best_model_path)
+            state = {
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict()
+            }
+            torch.save(state, best_model_path)
 
 
 def main():
