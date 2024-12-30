@@ -12,7 +12,7 @@ from pytorch_new_implementation.model import Seq2SeqModel
 
 def get_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--training_csv_file',
+    parser.add_argument('--input_filepath',
                         help='CSV file containing training data',
                         type=str, default='./output/training.csv')
     parser.add_argument('--embed_dim',
@@ -51,7 +51,7 @@ def get_arguments():
 
 def train_model(args):
 
-    training_csv_file = args.training_csv_file
+    input_filepath = args.input_filepath
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
     embed_dim = args.embed_dim
@@ -74,7 +74,7 @@ def train_model(args):
         accelerator = 'cpu'
     device = torch.device(accelerator)
 
-    df = pd.read_csv(training_csv_file)
+    df = pd.read_csv(input_filepath)
     # df = df.iloc[:25600, :]
 
     factors = df['factor'].tolist()
