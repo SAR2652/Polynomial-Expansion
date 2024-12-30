@@ -110,7 +110,7 @@ def train_model(args):
         batch_losses = list()
 
         for i, batch in enumerate(train_dataloader):
-            print(f'Batch {i + 1}')
+            # print(f'Batch {i + 1}')
 
             optimizer.zero_grad()
 
