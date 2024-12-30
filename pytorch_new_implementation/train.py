@@ -23,10 +23,10 @@ def get_arguments():
                         type=int, default=128)
     parser.add_argument('--learning_rate',
                         help='Learning rate for model training',
-                        type=float, default=5e-4)
+                        type=float, default=1e-3)
     parser.add_argument('--epochs',
                         help='Number of training epochs',
-                        type=int, default=3)
+                        type=int, default=50)
     parser.add_argument('--output_dir',
                         type=str,
                         help='Directory to save output',

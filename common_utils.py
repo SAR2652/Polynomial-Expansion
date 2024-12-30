@@ -27,7 +27,7 @@ class Tokenizer:
     pad_token_id = 2
     current_token_idx = 3
 
-    def __init__(self, framework):
+    def __init__(self):
         self.vocab_dict = dict()
         self.vocab_dict[self.sos_token] = self.sos_token_id
         self.vocab_dict[self.eos_token] = self.eos_token_id

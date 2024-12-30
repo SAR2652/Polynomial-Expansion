@@ -24,7 +24,7 @@ def build_tokenizer(args):
 
     factors, expressions = load_file(input_file)
 
-    tokenizer = Tokenizer('jax')
+    tokenizer = Tokenizer()
     tokenizer.expand_vocabulary(factors)
     tokenizer.expand_vocabulary(expressions)
 
