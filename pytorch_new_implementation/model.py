@@ -232,7 +232,7 @@ class Seq2SeqModel(nn.Module):
                 decoder_input = best_guess
                 best_guess_np = best_guess.detach().cpu().numpy()
                 best_guesses[:, t] = best_guess_np
-                print(best_guesses)
+                # print(best_guesses)
                 # best_guesses.append(best_guess.item())
 
         # print(outputs.shape)

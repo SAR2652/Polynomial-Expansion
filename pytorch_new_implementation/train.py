@@ -23,17 +23,17 @@ def get_arguments():
                         type=int, default=128)
     parser.add_argument('--learning_rate',
                         help='Learning rate for model training',
-                        type=float, default=1e-3)
+                        type=float, default=2e-3)
     parser.add_argument('--epochs',
                         help='Number of training epochs',
-                        type=int, default=100)
+                        type=int, default=250)
     parser.add_argument('--output_dir',
                         type=str,
                         help='Directory to save output',
                         default='./output')
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=1536)
+                        type=int, default=2048)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -122,8 +122,8 @@ def train_model(args):
             outputs = model(inputs, teacher_force_ratio, targets)
 
             # get rid of SOS token
-            outputs = outputs[:, :, 1:]
-            targets = targets[:, 1:]
+            # outputs = outputs[:, :, 1:]
+            # targets = targets[:, 1:]
             # print(outputs.shape)
             # print(targets.shape)
 
@@ -137,7 +137,7 @@ def train_model(args):
             running_loss += loss.item()
             batch_losses.append(loss.item())
 
-            if (i + 1) % 10 == 0:
+            if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
                       f'{running_loss:.4f}')
 
