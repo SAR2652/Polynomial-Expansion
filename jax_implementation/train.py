@@ -33,14 +33,14 @@ def get_training_arguments():
     parser.add_argument('--learning_rate',
                         type=int,
                         help='Learning Rate at which the model is to be '
-                        'trained', default=5e-3)
+                        'trained', default=2e-6)
     parser.add_argument('--output_dir',
                         type=str,
                         help='Directory to save output',
                         default='./output')
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=512)
+                        type=int, default=128)
     parser.add_argument('--epochs',
                         type=int,
                         help='Number of Epochs to train the model',
@@ -80,32 +80,43 @@ def load_model_params(model_parameters_dir: str):
     return model_params
 
 
-def cross_entropy_loss(logits, target):
+def cross_entropy_loss(logits, target, ignore_index=-1):
     """
-    Compute the cross-entropy loss between logits and target labels.
+    Compute the cross-entropy loss between logits and target labels, ignoring
+    the specified token index (e.g., padding tokens).
 
     Args:
-        logits (Array): Logits of shape (target_len, batch_size, vocab_size).
-        target (Array): Target IDs of shape (target_len, batch_size).
+        logits (Array): Logits of shape (batch_size, target_len, vocab_size).
+        target (Array): Target IDs of shape (batch_size, target_len).
+        ignore_index (int): The token ID to ignore in the loss calculation
+        (typically the padding token).
 
     Returns:
-        float: Average cross-entropy loss over the batch.
+        float: Average cross-entropy loss over the batch, ignoring the
+        specified token index.
     """
     # Reshape logits and targets for loss calculation
-    target_len, batch_size, vocab_size = logits.shape
-    logits_flat = logits.reshape(target_len * batch_size, vocab_size)
+    batch_size, target_len, vocab_size = logits.shape
+    logits_flat = logits.reshape(batch_size * target_len, vocab_size)
     target_flat = target.reshape(-1)
+
+    # Mask out the loss for the padding tokens
+    mask = target_flat != ignore_index
 
     # Compute cross-entropy loss
     log_probs = jax.nn.log_softmax(logits_flat, axis=-1)
     true_log_probs = log_probs[jnp.arange(logits_flat.shape[0]), target_flat]
-    loss = -jnp.mean(true_log_probs)
+
+    # Apply the mask to ignore the padding tokens in the loss calculation
+    loss = -jnp.sum(true_log_probs * mask) / jnp.sum(mask)  # Normalized by
+    # number of non-ignored tokens
+
     return loss
 
 
 def train_step(batch, encoder, decoder, optimizer, optimizer_state,
-               model_params, prng_key, vocab_size,
-               teacher_force_ratio: float = 0.5):
+               model_params, prng_key, tokenizer,
+               teacher_force_ratio: float = 0.2):
     """
     Perform a single training step.
 
@@ -127,7 +138,7 @@ def train_step(batch, encoder, decoder, optimizer, optimizer_state,
     input_ids = jnp.asarray(input_ids, dtype=jnp.int32)
     target_ids = jnp.asarray(target_ids, dtype=jnp.int32)
 
-    def criterion(model_params):
+    def criterion(model_params, input_ids, target_ids):
 
         encoder_params, decoder_params = model_params
 
@@ -136,7 +147,7 @@ def train_step(batch, encoder, decoder, optimizer, optimizer_state,
             encoder(encoder_params, input_ids)
 
         batch_size, target_len = target_ids.shape
-        outputs = jnp.zeros((batch_size, target_len, vocab_size),
+        outputs = jnp.zeros((batch_size, target_len, tokenizer.vocab_size),
                             dtype=jnp.float32)
 
         decoder_input = target_ids[:, 0]  # First token (<SOS>)
@@ -173,21 +184,22 @@ def train_step(batch, encoder, decoder, optimizer, optimizer_state,
         carry = jax.lax.fori_loop(1, target_len, loop_body, carry)
 
         outputs, _, _, _, _ = carry
-        return cross_entropy_loss(outputs, target_ids)
+        return cross_entropy_loss(outputs, target_ids, tokenizer.pad_token_id)
 
     # Compute gradients
     grad_criterion = jax.value_and_grad(criterion, has_aux=False)
-    loss, grads = grad_criterion(model_params)
+    loss, grads = grad_criterion(model_params, input_ids, target_ids)
 
     # Update parameters
-    updates, new_optimizer_state = optimizer.update(grads, optimizer_state)
+    updates, new_optimizer_state = optimizer.update(grads, optimizer_state,
+                                                    model_params)
     new_params = optax.apply_updates(model_params, updates)
 
     return loss, new_params, new_optimizer_state
 
 
 def train_model(model_params, epochs, number_of_batches,
-                hidden_size, vocab_dict,
+                hidden_size, tokenizer,
                 learning_rate, random_state, train_dataloader, output_dir,
                 teacher_force_ratio):
 
@@ -208,7 +220,7 @@ def train_model(model_params, epochs, number_of_batches,
 
             loss, model_params, optimizer_state = train_step(
                 batch, encoder, decoder, optimizer, optimizer_state,
-                model_params, prng_key, len(vocab_dict), teacher_force_ratio
+                model_params, prng_key, tokenizer, teacher_force_ratio
             )
 
             total_loss += loss
@@ -216,7 +228,7 @@ def train_model(model_params, epochs, number_of_batches,
             if (i + 1) % (number_of_batches // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = {total_loss:.4f}')
 
-        avg_loss = total_loss / len(train_dataloader)
+        avg_loss = total_loss / train_dataloader.dataset.__len__()
         print(f'Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}')
 
         if avg_loss < best_loss:
@@ -243,7 +255,7 @@ def train(args):
     teacher_force_ratio = args.teacher_force_ratio
 
     df = pd.read_csv(input_file)
-    # df = df.iloc[:12800, :]
+    df = df.iloc[:12800, :]
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
@@ -260,7 +272,7 @@ def train(args):
 
     model_params = train_model(
         model_params, epochs, number_of_batches, hidden_size,
-        tokenizer.vocab_dict, learning_rate, random_state, train_dataloader,
+        tokenizer, learning_rate, random_state, train_dataloader,
         output_dir, teacher_force_ratio
     )
 

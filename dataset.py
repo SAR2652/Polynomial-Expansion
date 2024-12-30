@@ -25,7 +25,7 @@ class PolynomialDataset(Dataset):
         item['expansion'] = expansion
         item['input_ids'] = factor_input_ids
         item['target_ids'] = expansion_label_ids
-        if self.framework == 'pytorch':
-            item['input_ids'] = item['input_ids'].view(-1, 1)
-            item['target_ids'] = item['target_ids'].view(-1, 1)
+        # if self.framework == 'pytorch':
+        #     item['input_ids'] = item['input_ids'].view(-1, 1)
+        #     item['target_ids'] = item['target_ids'].view(-1, 1)
         return item

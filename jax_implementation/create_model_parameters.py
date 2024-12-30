@@ -11,29 +11,45 @@ def create_lstm_cell_parameters(prng_key, embed_dim, hidden_dim, params):
 
     params['lstm']['cell'] = dict()
 
-    params['lstm']['cell']['U_f'] = random.normal(k1, (hidden_dim, hidden_dim))
-    params['lstm']['cell']['b1_f'] = random.normal(k1, (hidden_dim,))
+    w_k1, b_k1 = random.split(k1)
+    params['lstm']['cell']['U_f'] = random.normal(w_k1, (hidden_dim,
+                                                         hidden_dim))
+    params['lstm']['cell']['b1_f'] = random.normal(b_k1, (hidden_dim,))
 
-    params['lstm']['cell']['W_f'] = random.normal(k2, (embed_dim, hidden_dim))
-    params['lstm']['cell']['b2_f'] = random.normal(k2, (hidden_dim,))
+    w_k2, b_k2 = random.split(k2)
+    params['lstm']['cell']['W_f'] = random.normal(w_k2, (embed_dim,
+                                                         hidden_dim))
+    params['lstm']['cell']['b2_f'] = random.normal(b_k2, (hidden_dim,))
 
-    params['lstm']['cell']['U_g'] = random.normal(k3, (hidden_dim, hidden_dim))
-    params['lstm']['cell']['b1_g'] = random.normal(k3, (hidden_dim,))
+    w_k3, b_k3 = random.split(k3)
+    params['lstm']['cell']['U_g'] = random.normal(w_k3, (hidden_dim,
+                                                         hidden_dim))
+    params['lstm']['cell']['b1_g'] = random.normal(b_k3, (hidden_dim,))
 
-    params['lstm']['cell']['W_g'] = random.normal(k4, (embed_dim, hidden_dim))
-    params['lstm']['cell']['b2_g'] = random.normal(k4, (hidden_dim,))
+    w_k4, b_k4 = random.split(k4)
+    params['lstm']['cell']['W_g'] = random.normal(w_k4, (embed_dim,
+                                                         hidden_dim))
+    params['lstm']['cell']['b2_g'] = random.normal(b_k4, (hidden_dim,))
 
-    params['lstm']['cell']['U_i'] = random.normal(k5, (hidden_dim, hidden_dim))
-    params['lstm']['cell']['b1_i'] = random.normal(k5, (hidden_dim,))
+    w_k5, b_k5 = random.split(k5)
+    params['lstm']['cell']['U_i'] = random.normal(w_k5, (hidden_dim,
+                                                         hidden_dim))
+    params['lstm']['cell']['b1_i'] = random.normal(b_k5, (hidden_dim,))
 
-    params['lstm']['cell']['W_i'] = random.normal(k6, (embed_dim, hidden_dim))
-    params['lstm']['cell']['b2_i'] = random.normal(k6, (hidden_dim,))
+    w_k6, b_k6 = random.split(k6)
+    params['lstm']['cell']['W_i'] = random.normal(w_k6, (embed_dim,
+                                                         hidden_dim))
+    params['lstm']['cell']['b2_i'] = random.normal(b_k6, (hidden_dim,))
 
-    params['lstm']['cell']['U_o'] = random.normal(k7, (hidden_dim, hidden_dim))
-    params['lstm']['cell']['b1_o'] = random.normal(k7, (hidden_dim,))
+    w_k7, b_k7 = random.split(k7)
+    params['lstm']['cell']['U_o'] = random.normal(w_k7, (hidden_dim,
+                                                         hidden_dim))
+    params['lstm']['cell']['b1_o'] = random.normal(b_k7, (hidden_dim,))
 
-    params['lstm']['cell']['W_o'] = random.normal(k8, (embed_dim, hidden_dim))
-    params['lstm']['cell']['b2_o'] = random.normal(k8, (hidden_dim,))
+    w_k8, b_k8 = random.split(k8)
+    params['lstm']['cell']['W_o'] = random.normal(w_k8, (embed_dim,
+                                                         hidden_dim))
+    params['lstm']['cell']['b2_o'] = random.normal(b_k8, (hidden_dim,))
 
     return params
 
@@ -65,11 +81,15 @@ def create_bahdanau_attention_parameters(prng_key, hidden_dim, attention_dim,
 
     params['attention'] = dict()
 
-    params['attention']['W_h'] = random.normal(k1, (hidden_dim, attention_dim))
-    params['attention']['b_h'] = random.normal(k1, (hidden_dim,))
+    w_k1, b_k1 = random.split(k1)
+    params['attention']['W_h'] = random.normal(w_k1, (hidden_dim,
+                                                      attention_dim))
+    params['attention']['b_h'] = random.normal(b_k1, (hidden_dim,))
 
-    params['attention']['W_c'] = random.normal(k2, (hidden_dim, attention_dim))
-    params['attention']['b_c'] = random.normal(k2, (hidden_dim,))
+    w_k2, b_k2 = random.split(k2)
+    params['attention']['W_c'] = random.normal(w_k2, (hidden_dim,
+                                                      attention_dim))
+    params['attention']['b_c'] = random.normal(b_k2, (hidden_dim,))
 
     params['attention']['V'] = random.normal(k3, (attention_dim, 1))
 

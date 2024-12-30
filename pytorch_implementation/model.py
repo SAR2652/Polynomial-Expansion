@@ -2,6 +2,7 @@ import torch, random
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class Encoder(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1, p=0.1):
         super(Encoder, self).__init__()

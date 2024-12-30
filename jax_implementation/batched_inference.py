@@ -100,22 +100,20 @@ def load_model(encoder_filepath: str, decoder_filepath: str, model):
     return model
 
 
-def get_batched_predictions(batch, model, tokenizer, prng_key, expansions,
+def get_batched_predictions(batch, encoder, encoder_params, decoder,
+                            decoder_params, tokenizer, prng_key, expansions,
                             teacher_force_ratio: float = 0.5):
 
     input_ids = jnp.asarray(batch['input_ids'], dtype=jnp.int32)
-    target_ids = jnp.asarray(batch['target_ids'], dtype=jnp.int32)
 
     decoder_hidden_state, decoder_cell_state, encoder_outputs = \
-        model.encoder(input_ids)
+        encoder(input_ids)
 
     batch_size = input_ids.shape[0]
-    target_len = target_ids.shape[1]
 
     outputs = jnp.zeros((batch_size, target_len, tokenizer.vocab_size))
 
-    decoder_input = target_ids[:, 0]
-    _, target_len = target_ids.shape
+    decoder_input = 
 
     for t in range(1, target_len):
 
