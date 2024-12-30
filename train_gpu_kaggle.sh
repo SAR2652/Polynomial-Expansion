@@ -2,10 +2,11 @@ python -m pytorch_new_implementation.train \
     --input_filepath /kaggle/input/polynomialexpansion/training.csv \
     --output_dir /kaggle/working/output \
     --tokenizer_filepath /kaggle/input/polynomialexpansion/tokenizer.joblib \
-    --hidden_dim 128 \
-    --embed_dim 128 \
+    --hidden_dim 64 \
+    --embed_dim 64 \
     --epochs 250 \
-    --batch_size 2048
+    --batch_size 32 \
+    --learning_rate 2e-5
 
 # python -m jax_implementation.train \
 #     --input_filepath /kaggle/input/polynomialexpansion/training.csv \

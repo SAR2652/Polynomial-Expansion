@@ -23,7 +23,7 @@ def get_arguments():
                         type=int, default=128)
     parser.add_argument('--learning_rate',
                         help='Learning rate for model training',
-                        type=float, default=2e-3)
+                        type=float, default=5e-4)
     parser.add_argument('--epochs',
                         help='Number of training epochs',
                         type=int, default=250)
@@ -134,10 +134,12 @@ def train_model(args):
             loss.backward()
             optimizer.step()
 
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+
             running_loss += loss.item()
             batch_losses.append(loss.item())
 
-            if (i + 1) % (len(train_dataloader) // 100) == 0:
+            if (i + 1) % (len(train_dataloader) // 10) == 0:
                 print(f'Running Loss after {i + 1} batches = '
                       f'{running_loss:.4f}')
 
