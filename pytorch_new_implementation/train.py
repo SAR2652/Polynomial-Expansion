@@ -142,11 +142,11 @@ def train_model(args):
                 print(f'Running Loss after {i + 1} batches = '
                       f'{running_loss:.4f}')
 
-        epoch_loss = running_loss / len(train_dataloader)
-        print(f'Epoch {epoch + 1}: Loss = {epoch_loss:.4f}')
+        # epoch_loss = running_loss / len(train_dataloader)
+        print(f'Epoch {epoch + 1}: Loss = {running_loss:.4f}')
 
-        if epoch_loss < min_avg_loss:
-            min_avg_loss = epoch_loss
+        if running_loss < min_avg_loss:
+            min_avg_loss = running_loss
             state = {
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict()
