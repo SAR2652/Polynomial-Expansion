@@ -17,13 +17,13 @@ def get_arguments():
                         type=str, default='./output/training.csv')
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
-                        type=int, default=128)
+                        type=int, default=64)
     parser.add_argument('--hidden_dim',
                         help='Hidden layer dimensions',
-                        type=int, default=128)
+                        type=int, default=64)
     parser.add_argument('--learning_rate',
                         help='Learning rate for model training',
-                        type=float, default=5e-4)
+                        type=float, default=1e-3)
     parser.add_argument('--epochs',
                         help='Number of training epochs',
                         type=int, default=250)
@@ -33,7 +33,7 @@ def get_arguments():
                         default='./output')
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=2048)
+                        type=int, default=768)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -132,14 +132,13 @@ def train_model(args):
 
             # Backprop
             loss.backward()
-            optimizer.step()
-
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+            optimizer.step()
 
             running_loss += loss.item()
             batch_losses.append(loss.item())
 
-            if (i + 1) % (len(train_dataloader) // 10) == 0:
+            if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
                       f'{running_loss:.4f}')
 

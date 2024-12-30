@@ -5,8 +5,8 @@ python -m pytorch_new_implementation.train \
     --hidden_dim 64 \
     --embed_dim 64 \
     --epochs 250 \
-    --batch_size 32 \
-    --learning_rate 2e-5
+    --batch_size 768 \
+    --learning_rate 1e-3
 
 # python -m jax_implementation.train \
 #     --input_filepath /kaggle/input/polynomialexpansion/training.csv \
