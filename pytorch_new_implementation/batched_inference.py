@@ -14,7 +14,7 @@ def get_arguments():
                         type=str, default='./output/training.csv')
     parser.add_argument('--ckpt_filepath',
                         help='Model checkpoint filepath',
-                        type=str, default='./output/best_model_250.pth')
+                        type=str, default='./output/best_model_272.pth')
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
                         type=int, default=64)
@@ -78,7 +78,7 @@ def batched_inference(args):
 
     model = model.to(device)
 
-    ckpt = torch.load(ckpt_filepath, map_location=device)
+    ckpt = torch.load(ckpt_filepath, map_location=device, weights_only=True)
     model.load_state_dict(ckpt['model_state_dict'])
 
     model.eval()
