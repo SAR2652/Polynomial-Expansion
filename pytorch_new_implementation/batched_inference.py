@@ -1,4 +1,3 @@
-import os
 import torch
 import argparse
 import pandas as pd     # type: ignore
@@ -15,13 +14,13 @@ def get_arguments():
                         type=str, default='./output/training.csv')
     parser.add_argument('--ckpt_filepath',
                         help='Model checkpoint filepath',
-                        type=str, default='./output/best_model_50.pth')
+                        type=str, default='./output/best_model_250.pth')
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
-                        type=int, default=128)
+                        type=int, default=64)
     parser.add_argument('--hidden_dim',
                         help='Hidden layer dimensions',
-                        type=int, default=128)
+                        type=int, default=64)
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
                         type=int, default=5)
@@ -80,7 +79,7 @@ def batched_inference(args):
     model = model.to(device)
 
     ckpt = torch.load(ckpt_filepath, map_location=device)
-    model.load_state_dict(ckpt)
+    model.load_state_dict(ckpt['model_state_dict'])
 
     model.eval()
 
@@ -88,7 +87,7 @@ def batched_inference(args):
 
     for i, batch in enumerate(val_dataloader):
 
-        inputs, targets = batch
+        inputs, targets, _, _ = batch
         inputs = torch.from_numpy(inputs).type(torch.LongTensor) \
             .to(device, non_blocking=True)
         targets = torch.from_numpy(targets).type(torch.LongTensor) \

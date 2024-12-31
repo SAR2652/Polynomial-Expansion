@@ -51,7 +51,8 @@ def get_arguments():
                         'checkpoint',
                         action='store_true')
     parser.add_argument('--ckpt_file',
-                        help='Checkpoint to continue model training from')
+                        help='Checkpoint to continue model training from',
+                        type=str, default='./output/best_model_250.pth')
     return parser.parse_args()
 
 
@@ -69,6 +70,8 @@ def train_model(args):
     teacher_force_ratio = args.teacher_force_ratio
     random_state = args.random_state
     fca = args.fca
+    continue_from_ckpt = args.continue_from_ckpt
+    ckpt_file = args.ckpt_file
     tokenizer = load_tokenizer(tokenizer_filepath)
 
     torch.manual_seed(random_state)
@@ -97,8 +100,16 @@ def train_model(args):
                          tokenizer.MAX_SEQUENCE_LENGTH, device)
 
     model = model.to(device)
-
     optimizer = Adam(model.parameters(), lr=learning_rate)
+
+    if continue_from_ckpt:
+        ckpt = torch.load(ckpt_file, map_location=device)
+        model.load_state_dict(ckpt['model_state_dict'])
+        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = learning_rate
+
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
     min_avg_loss = float('inf')
