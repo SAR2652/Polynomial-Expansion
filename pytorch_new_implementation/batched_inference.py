@@ -14,7 +14,7 @@ def get_arguments():
                         type=str, default='./output/training.csv')
     parser.add_argument('--ckpt_filepath',
                         help='Model checkpoint filepath',
-                        type=str, default='./output/best_model_272.pth')
+                        type=str, default='./output/best_model_96.pth')
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
                         type=int, default=64)
