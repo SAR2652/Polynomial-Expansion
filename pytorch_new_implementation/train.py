@@ -93,7 +93,7 @@ def train_model(args):
     device = torch.device(accelerator)
 
     df = pd.read_csv(input_filepath)
-    df = df.iloc[:4, :]
+    # df = df.iloc[:4, :]
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
@@ -169,9 +169,9 @@ def train_model(args):
             running_loss += loss.item()
             batch_losses.append(loss.item())
 
-            # if (i + 1) % (len(train_dataloader) // 100) == 0:
-            #     print(f'Running Loss after {i + 1} batches = '
-            #           f'{running_loss:.4f}')
+            if (i + 1) % (len(train_dataloader) // 100) == 0:
+                print(f'Running Loss after {i + 1} batches = '
+                      f'{running_loss:.4f}')
 
         # epoch_loss = running_loss / len(train_dataloader)
         print(f'Epoch {epoch + 1}: Loss = {running_loss:.4f}')
