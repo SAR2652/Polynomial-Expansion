@@ -14,7 +14,7 @@ def get_arguments():
                         type=str, default='./output/training.csv')
     parser.add_argument('--ckpt_filepath',
                         help='Model checkpoint filepath',
-                        type=str, default='./output/best_model_96.pth')
+                        type=str, default='./output/best_model_6.pth')
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
                         type=int, default=64)
@@ -23,7 +23,7 @@ def get_arguments():
                         type=int, default=64)
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=5)
+                        type=int, default=2)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -87,12 +87,15 @@ def batched_inference(args):
 
     for i, batch in enumerate(val_dataloader):
 
-        inputs, targets, _, _ = batch
+        inputs, targets, f, e = batch
+        print(inputs, targets, f, e)
         inputs = torch.from_numpy(inputs).type(torch.LongTensor) \
             .to(device, non_blocking=True)
         targets = torch.from_numpy(targets).type(torch.LongTensor) \
             .to(device, non_blocking=True)
         _, best_guesses = model(inputs, eval=True)
+
+        print(best_guesses)
 
         curr_expressions = tokenizer.batch_decode_expressions(best_guesses)
         expressions.extend(curr_expressions)

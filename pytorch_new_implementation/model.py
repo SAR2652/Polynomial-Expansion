@@ -1,5 +1,5 @@
 import torch
-# import random
+import random
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,20 +7,185 @@ import torch.nn.functional as F
 
 class Encoder(nn.Module):
     def __init__(self, vocab_size: int, embed_dim: int, hidden_dim: int,
-                 p: float = 0.1):
+                 bidirectional: bool = False, p: float = 0.2):
         super(Encoder, self).__init__()
         self.vocab_size = vocab_size
         self.embed_dim = embed_dim
         self.hidden_dim = hidden_dim
+        self.bidirectional = bidirectional
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.dropout = nn.Dropout(p)
         self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True,
-                            bidirectional=True)
+                            bidirectional=bidirectional)
 
     def forward(self, inputs):
         embeddings = self.dropout(self.embedding(inputs))
         outputs, (hidden, cell) = self.lstm(embeddings)
+
+        if self.bidirectional:      # Merge forward and backward hidden states
+            hidden_reshaped = hidden.transpose(0, 1)
+            hidden_reshaped = hidden_reshaped.reshape(hidden_reshaped.size(0),
+                                                      -1).unsqueeze(0)
+            hidden = hidden_reshaped
+
+            cell_reshaped = cell.transpose(0, 1)
+            cell_reshaped = cell_reshaped.reshape(cell_reshaped.size(0),
+                                                  -1).unsqueeze(0)
+            cell = cell_reshaped
+
         return outputs, hidden, cell
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, embed_dim: int, num_heads: int):
+        super(MultiHeadAttention, self).__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        msg = "Embedding dimension MUST be divisible by number of heads"
+        assert embed_dim % num_heads == 0, msg
+
+        self.head_dim = embed_dim // num_heads
+        self.scale = self.head_dim ** -0.5
+
+        self.query = nn.Linear(embed_dim, embed_dim)
+        self.key = nn.Linear(embed_dim, embed_dim)
+        self.value = nn.Linear(embed_dim, embed_dim)
+
+        self.out = nn.Linear(embed_dim, embed_dim)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, query, keys=None, value=None):
+
+        batch_size, query_seq_len, _ = query.shape
+
+        if keys is not None:
+            _, keys_seq_len, _ = keys.shape
+        else:
+            keys = query
+            keys_seq_len = query_seq_len
+
+        if value is not None:
+            _, value_seq_len, _ = keys.shape
+        else:
+            value = query
+            value_seq_len = query_seq_len
+
+        Q = self.query(query)
+        K = self.key(keys)
+        V = self.value(value)
+
+        # print(Q.shape)
+        # print(K.shape)
+        # print(V.shape)
+
+        # Original shape is (batch_size, seq_len, embed_dim)
+        # Reshape to (batch_size, seq_len, num_heads, head_dim)
+        # Permute dimensions to (batch_size, num_heads, seq_len, head_dim)
+        Q = Q.reshape(batch_size, query_seq_len, self.num_heads, self.head_dim)
+        Q = Q.permute(0, 2, 1, 3)
+        K = K.reshape(batch_size, keys_seq_len, self.num_heads, self.head_dim)
+        K = K.permute(0, 2, 1, 3)
+        V = V.reshape(batch_size, value_seq_len, self.num_heads, self.head_dim)
+        V = V.permute(0, 2, 1, 3)
+
+        # Get attention scores of shape:
+        # (batch_size, num_heads, seq_len, seq_len)
+        attention_scores = torch.matmul(Q, K.transpose(-1, -2)) * self.scale
+        attention_weights = self.softmax(attention_scores)
+
+        # Attention output will have shape:
+        # (batch_size, num_heads, seq_len, seq_len) *
+        # (batch_size, num_heads, seq_len, head_dim) =
+        # (batch_size, num_heads, seq_len, head_dim)
+        attention_output = torch.matmul(attention_weights, V)
+        # attention_output = torch.bmm(attention_weights, V)
+
+        # Restore shape to (batch_size, seq_len, num_heads, head_dim)
+        attention_output = attention_output.contiguous().permute(0, 2, 1, 3)
+
+        # Reshape output to (batch_size, seq_len, embed_dim)
+        attention_output = attention_output.reshape(batch_size, query_seq_len,
+                                                    self.embed_dim)
+
+        return attention_output
+
+
+class MHADecoder(nn.Module):
+    def __init__(self, vocab_size: int, hidden_dim: int,
+                 encoder_bidirectional: bool, num_heads: int,
+                 sos_token_id: int, max_length: int, device: torch.device,
+                 p: float = 0.2):
+        super(MHADecoder, self).__init__()
+
+        self.vocab_size = vocab_size
+        self.hidden_dim = hidden_dim
+        self.encoder_bidirectional = encoder_bidirectional
+        if encoder_bidirectional:
+            self.hidden_dim *= 2
+        self.num_heads = num_heads
+        self.sos_token_id = sos_token_id
+        self.max_length = max_length
+        self.device = device
+        self.embedding = nn.Embedding(vocab_size, self.hidden_dim)
+        self.attention = MultiHeadAttention(self.hidden_dim, num_heads)
+        self.layernorm = nn.LayerNorm(self.hidden_dim)
+        self.dropout = nn.Dropout(p)
+        self.lstm = nn.LSTM(2 * self.hidden_dim, self.hidden_dim,
+                            batch_first=True)
+        self.fc_out = nn.Linear(self.hidden_dim, vocab_size)
+
+    def forward(self, encoder_outputs, encoder_hidden, encoder_cell,
+                targets=None):
+
+        batch_size = encoder_outputs.size(0)
+        decoder_input = torch.empty(batch_size, 1, dtype=torch.long,
+                                    device=self.device).fill_(
+                                        self.sos_token_id)
+        decoder_hidden = encoder_hidden
+        decoder_cell = encoder_cell
+
+        decoder_outputs = list()
+
+        for t in range(self.max_length):
+
+            embedding = self.embedding(decoder_input)
+
+            attention_output = self.attention(embedding, encoder_outputs,
+                                              encoder_outputs)
+            attention_output = self.layernorm(attention_output +
+                                              self.dropout(attention_output))
+
+            lstm_input = torch.cat((embedding, attention_output), dim=2)
+
+            decoder_output, (decoder_hidden, decoder_cell) = \
+                self.lstm(lstm_input, (decoder_hidden, decoder_cell))
+
+            output = self.fc_out(decoder_output)
+
+            decoder_outputs.append(output)
+
+            if targets is not None:
+                decoder_input = targets[:, t].unsqueeze(1)
+            else:
+                _, topi = decoder_output.topk(1)
+                decoder_input = topi.squeeze(-1).detach()
+
+        decoder_outputs = torch.cat(decoder_outputs, dim=1)
+
+        return decoder_outputs
+
+
+class CrossAttentionModel(nn.Module):
+    def __init__(self, encoder, decoder):
+        super(CrossAttentionModel, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+
+    def forward(self, inputs, targets=None):
+        encoder_outputs, encoder_hidden, encoder_cell = self.encoder(inputs)
+        decoder_outputs = self.decoder(encoder_outputs, encoder_hidden,
+                                       encoder_cell, targets)
+        return decoder_outputs
 
 
 class BahdanauAttention(nn.Module):
@@ -57,9 +222,12 @@ class BahdanauAttention(nn.Module):
         # (batch_size, 1, decoder_hidden_size)
 
         _, seq_len, _ = encoder_outputs.shape
+        # switch batch and seq_len dimensions for decoder hidden state
         decoder_hidden = decoder_hidden.transpose(0, 1)
         # (batch_size, 2, encoder_hidden_dim)
+        # Merge forward and backward hidden states
         decoder_hidden = decoder_hidden.reshape(decoder_hidden.size(0), -1)
+
         decoder_hidden = decoder_hidden.unsqueeze(1)
         decoder_hidden = decoder_hidden.repeat(1, seq_len, 1)
 
@@ -197,19 +365,20 @@ class Seq2SeqModel(nn.Module):
             self.encoder(inputs)
 
         batch_size, _, _ = encoder_outputs.shape
-        # use_teacher_forcing = random.random() < teacher_force_ratio
-        # use_teacher_forcing = torch.tensor([use_teacher_forcing] *
-        #                                    batch_size).to(self.device)
+        use_teacher_forcing = random.random() < teacher_force_ratio
+        use_teacher_forcing = torch.tensor([use_teacher_forcing] *
+                                           batch_size).to(self.device)
 
         decoder_input = torch.tensor([self.sos_token_id] * batch_size,
                                      dtype=torch.int32).to(self.device)
+        # print(decoder_input)
 
         outputs = torch.zeros(batch_size, self.target_len,
                               self.vocab_size).to(self.device)
         # best_guesses = np.array
 
         if eval:
-            best_guesses = np.zeros((batch_size, self.target_len))
+            best_guesses = np.ones((batch_size, self.target_len))
 
         for t in range(1, self.target_len):
 
@@ -217,7 +386,8 @@ class Seq2SeqModel(nn.Module):
                 self.decoder(decoder_input, decoder_hidden_state,
                              decoder_cell_state, encoder_outputs)
 
-            best_guess = logits.argmax(1)
+            # print(logits.shape)
+            best_guess = logits.argmax(-1)
             outputs[:, t, :] = logits
 
             if not eval:
@@ -229,8 +399,121 @@ class Seq2SeqModel(nn.Module):
                 #     best_guess.unsqueeze(1)     # Use model's predicted token
                 # ).squeeze(1)
                 decoder_input = targets[:, t]
+                # print(decoder_input)
             else:
                 decoder_input = best_guess
+                best_guess_np = best_guess.detach().cpu().numpy()
+                best_guesses[:, t] = best_guess_np
+                # print(best_guesses)
+                # best_guesses.append(best_guess.item())
+
+        # print(outputs.shape)
+        if not eval:
+            return outputs
+        else:
+            return outputs, best_guesses
+
+
+class Decoder(nn.Module):
+    def __init__(self, hidden_dim: int, vocab_size: int,
+                 embed_dim: int, num_heads: int):
+
+        super(Decoder, self).__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.vocab_size = vocab_size
+
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        self.attention = MultiHeadAttention(embed_dim, num_heads)
+        self.lstm = nn.LSTM(embed_dim + hidden_dim * 2,
+                            hidden_dim, bidirectional=True,
+                            batch_first=True)
+        self.fc_out = nn.Linear(hidden_dim * 2, vocab_size)
+
+    def forward(self, targets, encoder_outputs, decoder_hidden_state,
+                decoder_cell_state):
+
+        context = self.attention(encoder_outputs)
+        target_len = encoder_outputs.shape[1]
+
+        embedded = self.embedding(targets)
+
+        embedded = embedded.unsqueeze(1)
+        embedded = embedded.repeat(1, target_len, 1)
+
+        lstm_input = torch.cat((embedded, context), dim=2)
+
+        outputs, (hidden, cell) = self.lstm(lstm_input,
+                                            (decoder_hidden_state,
+                                             decoder_cell_state))
+
+        predictions = self.fc_out(outputs)
+        return predictions, hidden, cell
+
+
+class Seq2SeqModelSA(nn.Module):
+    def __init__(self, vocab_size: int, embed_dim: int, num_heads: int,
+                 encoder_hidden_dim: int, decoder_hidden_dim: int,
+                 sos_token_id: int, target_len: int, device: torch.device):
+        super(Seq2SeqModelSA, self).__init__()
+        self.vocab_size = vocab_size
+        self.encoder = Encoder(vocab_size, embed_dim, encoder_hidden_dim)
+        self.decoder = Decoder(decoder_hidden_dim, vocab_size, embed_dim * 2,
+                               num_heads)
+        self.sos_token_id = sos_token_id
+        self.target_len = target_len
+        self.device = device
+
+    def forward(self, inputs, teacher_force_ratio: float = 0.5, targets=None,
+                eval: bool = True):
+
+        encoder_outputs, decoder_hidden_state, decoder_cell_state = \
+            self.encoder(inputs)
+
+        # print(encoder_outputs.shape)
+        # print(decoder_hidden_state.shape)
+        # print(decoder_cell_state.shape)
+
+        batch_size, _, _ = encoder_outputs.shape
+        use_teacher_forcing = random.random() < teacher_force_ratio
+        use_teacher_forcing = torch.tensor([use_teacher_forcing] *
+                                           batch_size).to(self.device)
+
+        decoder_input = torch.tensor([self.sos_token_id] * batch_size,
+                                     dtype=torch.int32).to(self.device)
+        # print(decoder_input.shape)
+
+        outputs = torch.zeros(batch_size, self.target_len,
+                              self.vocab_size).to(self.device)
+        # print(outputs.shape)
+
+        if eval:
+            best_guesses = np.ones((batch_size, self.target_len))
+
+        for t in range(1, self.target_len):
+
+            # logits, decoder_hidden_state, decoder_cell_state, _ = \
+            logits, decoder_hidden_state, decoder_cell_state = \
+                self.decoder(decoder_input, encoder_outputs,
+                             decoder_hidden_state, decoder_cell_state,)
+
+            best_guess = logits.argmax(1)
+            print(logits.shape)
+            print(outputs.shape)
+            outputs[:, t, :] = logits
+
+            if not eval:
+                # decoder_input = torch.where(
+                #     # Align dimensions for broadcasting
+                #     use_teacher_forcing.unsqueeze(1),
+                #     # Use target token (teacher forcing)
+                #     targets[:, t].unsqueeze(1),
+                #     best_guess.unsqueeze(1)     # Use model's predicted token
+                # ).squeeze(1)
+                decoder_input = targets[:, t].unsqueeze(1)
+                # print(decoder_input)
+            else:
+                decoder_input = best_guess.unsqueeze(1)
                 best_guess_np = best_guess.detach().cpu().numpy()
                 best_guesses[:, t] = best_guess_np
                 # print(best_guesses)

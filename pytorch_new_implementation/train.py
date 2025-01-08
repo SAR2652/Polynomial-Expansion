@@ -7,7 +7,8 @@ from torch.optim import Adam
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from common_utils import collate_fn, load_tokenizer
-from pytorch_new_implementation.model import Seq2SeqModel
+from pytorch_new_implementation.model import Encoder, MHADecoder, \
+    CrossAttentionModel
 
 
 def get_arguments():
@@ -17,23 +18,26 @@ def get_arguments():
                         type=str, default='./output/training.csv')
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
-                        type=int, default=64)
+                        type=int, default=32)
     parser.add_argument('--hidden_dim',
                         help='Hidden layer dimensions',
-                        type=int, default=64)
+                        type=int, default=32)
+    parser.add_argument('--num_heads',
+                        help='Number of Attention Heads',
+                        type=int, default=4)
     parser.add_argument('--learning_rate',
                         help='Learning rate for model training',
-                        type=float, default=1e-3)
+                        type=float, default=2e-4)
     parser.add_argument('--epochs',
                         help='Number of training epochs',
-                        type=int, default=250)
+                        type=int, default=1)
     parser.add_argument('--output_dir',
                         type=str,
                         help='Directory to save output',
                         default='./output')
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=768)
+                        type=int, default=2)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -45,6 +49,9 @@ def get_arguments():
                         type=int, default=42)
     parser.add_argument('--fca',
                         help='Force CPU Acceleration',
+                        action='store_true')
+    parser.add_argument('--bidirectional',
+                        help='Bidirectional LSTM within Encoder',
                         action='store_true')
     parser.add_argument('--continue_from_ckpt',
                         help='Continue model training from a previous '
@@ -63,15 +70,17 @@ def train_model(args):
     os.makedirs(output_dir, exist_ok=True)
     embed_dim = args.embed_dim
     hidden_dim = args.hidden_dim
+    num_heads = args.num_heads
     learning_rate = args.learning_rate
     epochs = args.epochs
     batch_size = args.batch_size
     tokenizer_filepath = args.tokenizer_filepath
-    teacher_force_ratio = args.teacher_force_ratio
+    # teacher_force_ratio = args.teacher_force_ratio
     random_state = args.random_state
     fca = args.fca
     continue_from_ckpt = args.continue_from_ckpt
     ckpt_file = args.ckpt_file
+    bidirectional = args.bidirectional
     tokenizer = load_tokenizer(tokenizer_filepath)
 
     torch.manual_seed(random_state)
@@ -84,20 +93,29 @@ def train_model(args):
     device = torch.device(accelerator)
 
     df = pd.read_csv(input_filepath)
-    # df = df.iloc[:25600, :]
+    df = df.iloc[:4, :]
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
 
-    train_dataset = PolynomialDataset(factors, expansions, tokenizer,
-                                      tokenizer.MAX_SEQUENCE_LENGTH, 'pytorch')
+    train_dataset = PolynomialDataset(factors, expansions, tokenizer)
     train_dataloader = DataLoader(train_dataset, shuffle=True,
                                   batch_size=batch_size, collate_fn=collate_fn,
                                   pin_memory=True)
 
-    model = Seq2SeqModel(tokenizer.vocab_size, embed_dim, hidden_dim,
-                         hidden_dim, tokenizer.sos_token_id,
-                         tokenizer.MAX_SEQUENCE_LENGTH, device)
+    # model = Seq2SeqModel(tokenizer.vocab_size, embed_dim, hidden_dim,
+    #                      hidden_dim, tokenizer.sos_token_id,
+    #                      tokenizer.MAX_SEQUENCE_LENGTH, device)
+    # model = Seq2SeqModelSA(tokenizer.vocab_size, embed_dim, num_heads,
+    #                        hidden_dim, hidden_dim, tokenizer.sos_token_id,
+    #                        tokenizer.MAX_SEQUENCE_LENGTH, device)
+
+    encoder = Encoder(tokenizer.vocab_size, embed_dim, hidden_dim,
+                      bidirectional)
+    mhad = MHADecoder(tokenizer.vocab_size, hidden_dim, bidirectional,
+                      num_heads, tokenizer.sos_token_id,
+                      tokenizer.MAX_SEQUENCE_LENGTH, device)
+    model = CrossAttentionModel(encoder, mhad)
 
     model = model.to(device)
     optimizer = Adam(model.parameters(), lr=learning_rate)
@@ -126,17 +144,19 @@ def train_model(args):
             optimizer.zero_grad()
 
             inputs, targets, _, _ = batch
+            # print(inputs.shape)
+            # print(targets.shape)
             inputs = torch.from_numpy(inputs).type(torch.LongTensor) \
                 .to(device, non_blocking=True)
             targets = torch.from_numpy(targets).type(torch.LongTensor) \
                 .to(device, non_blocking=True)
-            outputs = model(inputs, teacher_force_ratio, targets)
+            outputs = model(inputs, targets)
 
             # get rid of SOS token
-            # outputs = outputs[:, :, 1:]
+            # outputs = outputs[:, 1:, :]
             # targets = targets[:, 1:]
-            # print(outputs.shape)
-            # print(targets.shape)
+            outputs = outputs.view(-1, outputs.size(-1))
+            targets = targets.view(-1)
 
             # Loss values
             loss = criterion(outputs, targets)
@@ -149,9 +169,9 @@ def train_model(args):
             running_loss += loss.item()
             batch_losses.append(loss.item())
 
-            if (i + 1) % (len(train_dataloader) // 100) == 0:
-                print(f'Running Loss after {i + 1} batches = '
-                      f'{running_loss:.4f}')
+            # if (i + 1) % (len(train_dataloader) // 100) == 0:
+            #     print(f'Running Loss after {i + 1} batches = '
+            #           f'{running_loss:.4f}')
 
         # epoch_loss = running_loss / len(train_dataloader)
         print(f'Epoch {epoch + 1}: Loss = {running_loss:.4f}')
