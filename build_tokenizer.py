@@ -9,7 +9,7 @@ def get_vocabulary_arguments():
     parser.add_argument('--input_filepath',
                         type=str,
                         help='Path to Input File',
-                        default='./data/train.txt')
+                        default='./output/train.txt')
     parser.add_argument('--output_dir',
                         type=str,
                         help='Directory to save tokenizer file',

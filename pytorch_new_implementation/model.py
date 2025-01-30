@@ -498,8 +498,6 @@ class Seq2SeqModelSA(nn.Module):
                              decoder_hidden_state, decoder_cell_state,)
 
             best_guess = logits.argmax(1)
-            print(logits.shape)
-            print(outputs.shape)
             outputs[:, t, :] = logits
 
             if not eval:

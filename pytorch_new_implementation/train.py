@@ -131,7 +131,7 @@ def train_model(args):
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
     min_avg_loss = float('inf')
-    best_model_path = os.path.join(output_dir, 'best_model.pth')
+    best_model_path = os.path.join(output_dir, 'best_model_ca.pth')
 
     for epoch in range(epochs):
 
@@ -152,9 +152,7 @@ def train_model(args):
                 .to(device, non_blocking=True)
             outputs = model(inputs, targets)
 
-            # get rid of SOS token
-            # outputs = outputs[:, 1:, :]
-            # targets = targets[:, 1:]
+            # Reshape outputs and targets
             outputs = outputs.view(-1, outputs.size(-1))
             targets = targets.view(-1)
 
