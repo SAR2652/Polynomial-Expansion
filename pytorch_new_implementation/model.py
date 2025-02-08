@@ -74,10 +74,6 @@ class MultiHeadAttention(nn.Module):
         K = self.key(keys)
         V = self.value(value)
 
-        # print(Q.shape)
-        # print(K.shape)
-        # print(V.shape)
-
         # Original shape is (batch_size, seq_len, embed_dim)
         # Reshape to (batch_size, seq_len, num_heads, head_dim)
         # Permute dimensions to (batch_size, num_heads, seq_len, head_dim)
