@@ -490,7 +490,7 @@ class Seq2SeqModelSA(nn.Module):
 class DecoderSACA(nn.Module):
     def __init__(self, hidden_dim: int, vocab_size: int, embed_dim: int,
                  num_heads: int):
-        super(Decoder, self).__init__()
+        super(DecoderSACA, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.hidden_dim = hidden_dim
