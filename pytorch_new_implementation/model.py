@@ -524,7 +524,7 @@ class CrossAttentionModel(nn.Module):
                               self.vocab_size).to(self.device)
 
         decoder_input = torch.tensor([self.sos_token_id] * batch_size) \
-            .reshape(-1, 1)
+            .reshape(-1, 1).to(self.device)
 
         if eval:
             best_guesses = np.ones((batch_size, target_len))
