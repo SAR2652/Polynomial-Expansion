@@ -4,8 +4,7 @@ import pandas as pd     # type: ignore
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from common_utils import load_tokenizer, collate_fn
-from pytorch_new_implementation.model import Encoder, MHADecoder, \
-    CrossAttentionModel
+from pytorch_new_implementation.model import Seq2SeqModelSA
 
 
 def get_arguments():
@@ -15,7 +14,7 @@ def get_arguments():
                         type=str, default='./output/training.csv')
     parser.add_argument('--ckpt_filepath',
                         help='Model checkpoint filepath',
-                        type=str, default='./output/best_model_sa.pth')
+                        type=str, default='./output/best_model_ca.pth')
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
                         type=int, default=64)
@@ -53,7 +52,7 @@ def batched_inference(args):
     hidden_dim = args.hidden_dim
     batch_size = args.batch_size
     tokenizer_filepath = args.tokenizer_filepath
-    bidirectional = args.bidirectional
+    # bidirectional = args.bidirectional
     num_heads = args.num_heads
 
     random_state = args.random_state
@@ -80,16 +79,16 @@ def batched_inference(args):
                                 batch_size=batch_size, collate_fn=collate_fn,
                                 pin_memory=True)
 
-    # model = Seq2SeqModel(tokenizer.vocab_size, embed_dim, hidden_dim,
-    #                      hidden_dim, tokenizer.sos_token_id,
-    #                      tokenizer.MAX_SEQUENCE_LENGTH, device)
+    model = Seq2SeqModelSA(tokenizer.vocab_size, embed_dim, num_heads,
+                           hidden_dim, hidden_dim, tokenizer.sos_token_id,
+                           tokenizer.MAX_SEQUENCE_LENGTH, device)
 
-    encoder = Encoder(tokenizer.vocab_size, embed_dim, hidden_dim,
-                      bidirectional)
-    mhad = MHADecoder(tokenizer.vocab_size, hidden_dim, bidirectional,
-                      num_heads, tokenizer.sos_token_id,
-                      tokenizer.MAX_SEQUENCE_LENGTH, device)
-    model = CrossAttentionModel(encoder, mhad)
+    # encoder = Encoder(tokenizer.vocab_size, embed_dim, hidden_dim,
+    #                   bidirectional)
+    # mhad = MHADecoder(tokenizer.vocab_size, hidden_dim, bidirectional,
+    #                   num_heads, tokenizer.sos_token_id,
+    #                   tokenizer.MAX_SEQUENCE_LENGTH, device)
+    # model = CrossAttentionModel(encoder, mhad)
 
     model = model.to(device)
 
@@ -110,8 +109,6 @@ def batched_inference(args):
         logits = model(inputs)
         print(logits.argmax(-1).shape)
         best_guesses = logits.argmax(-1).detach().cpu().numpy()
-
-        # print(best_guesses)
 
         curr_expressions = tokenizer.batch_decode_expressions(best_guesses)
         expressions.extend(curr_expressions)

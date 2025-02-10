@@ -7,8 +7,7 @@ from torch.optim import Adam
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from common_utils import collate_fn, load_tokenizer
-from pytorch_new_implementation.model import Encoder, MHADecoder, \
-    CrossAttentionModel
+from pytorch_new_implementation.model import CrossAttentionModel
 
 
 def get_arguments():
@@ -80,7 +79,7 @@ def train_model(args):
     fca = args.fca
     continue_from_ckpt = args.continue_from_ckpt
     ckpt_file = args.ckpt_file
-    bidirectional = args.bidirectional
+    # bidirectional = args.bidirectional
     tokenizer = load_tokenizer(tokenizer_filepath)
 
     torch.manual_seed(random_state)
@@ -110,12 +109,14 @@ def train_model(args):
     #                        hidden_dim, hidden_dim, tokenizer.sos_token_id,
     #                        tokenizer.MAX_SEQUENCE_LENGTH, device)
 
-    encoder = Encoder(tokenizer.vocab_size, embed_dim, hidden_dim,
-                      bidirectional)
-    mhad = MHADecoder(tokenizer.vocab_size, hidden_dim, bidirectional,
-                      num_heads, tokenizer.sos_token_id,
-                      tokenizer.MAX_SEQUENCE_LENGTH, device)
-    model = CrossAttentionModel(encoder, mhad)
+    # encoder = Encoder(tokenizer.vocab_size, embed_dim, hidden_dim,
+    #                   bidirectional)
+    # mhad = MHADecoder(tokenizer.vocab_size, hidden_dim, bidirectional,
+    #                   num_heads, tokenizer.sos_token_id,
+    #                   tokenizer.MAX_SEQUENCE_LENGTH, device)
+    # model = CrossAttentionModel(encoder, mhad)
+    model = CrossAttentionModel(hidden_dim, tokenizer.vocab_size, embed_dim,
+                                num_heads, tokenizer.sos_token_id)
 
     model = model.to(device)
     optimizer = Adam(model.parameters(), lr=learning_rate)
@@ -131,7 +132,7 @@ def train_model(args):
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
     min_avg_loss = float('inf')
-    best_model_path = os.path.join(output_dir, 'best_model_ca.pth')
+    best_model_path = os.path.join(output_dir, 'best_model_sa_test.pth')
 
     for epoch in range(epochs):
 
