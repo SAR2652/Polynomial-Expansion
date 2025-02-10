@@ -4,7 +4,7 @@ import pandas as pd     # type: ignore
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from common_utils import load_tokenizer, collate_fn
-from pytorch_new_implementation.model import Seq2SeqModelSA
+from pytorch_new_implementation.model import CrossAttentionModel
 
 
 def get_arguments():
@@ -14,13 +14,13 @@ def get_arguments():
                         type=str, default='./output/training.csv')
     parser.add_argument('--ckpt_filepath',
                         help='Model checkpoint filepath',
-                        type=str, default='./output/best_model_ca.pth')
+                        type=str, default='./output/best_model_ca_latest.pth')
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
-                        type=int, default=64)
+                        type=int, default=32)
     parser.add_argument('--hidden_dim',
                         help='Hidden layer dimensions',
-                        type=int, default=64)
+                        type=int, default=32)
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
                         type=int, default=2)
@@ -79,9 +79,9 @@ def batched_inference(args):
                                 batch_size=batch_size, collate_fn=collate_fn,
                                 pin_memory=True)
 
-    model = Seq2SeqModelSA(tokenizer.vocab_size, embed_dim, num_heads,
-                           hidden_dim, hidden_dim, tokenizer.sos_token_id,
-                           tokenizer.MAX_SEQUENCE_LENGTH, device)
+    # model = Seq2SeqModelSA(tokenizer.vocab_size, embed_dim, num_heads,
+    #                        hidden_dim, hidden_dim, tokenizer.sos_token_id,
+    #                        tokenizer.MAX_SEQUENCE_LENGTH, device)
 
     # encoder = Encoder(tokenizer.vocab_size, embed_dim, hidden_dim,
     #                   bidirectional)
@@ -89,6 +89,9 @@ def batched_inference(args):
     #                   num_heads, tokenizer.sos_token_id,
     #                   tokenizer.MAX_SEQUENCE_LENGTH, device)
     # model = CrossAttentionModel(encoder, mhad)
+    model = CrossAttentionModel(hidden_dim, tokenizer.vocab_size, embed_dim,
+                                num_heads, tokenizer.sos_token_id,
+                                tokenizer.pad_token_id, device)
 
     model = model.to(device)
 
@@ -107,7 +110,6 @@ def batched_inference(args):
         targets = torch.from_numpy(targets).type(torch.LongTensor) \
             .to(device, non_blocking=True)
         logits = model(inputs)
-        print(logits.argmax(-1).shape)
         best_guesses = logits.argmax(-1).detach().cpu().numpy()
 
         curr_expressions = tokenizer.batch_decode_expressions(best_guesses)

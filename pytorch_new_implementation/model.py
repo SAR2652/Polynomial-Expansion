@@ -415,14 +415,20 @@ class Decoder(nn.Module):
     def forward(self, target_token, encoder_outputs, decoder_hidden_state,
                 decoder_cell_state):
 
+        # Shape = (B, 1, E)
         embedded = self.embedding(target_token)
+
+        # Shape = (B, 1, H)
         context = self.attention(embedded, encoder_outputs, encoder_outputs)
+
+        # Shape = (B, 1, E + H)
         lstm_input = torch.cat((embedded, context), dim=2)
 
         outputs, (hidden, cell) = self.lstm(lstm_input,
                                             (decoder_hidden_state,
                                              decoder_cell_state))
 
+        # Shape = (B, 1, V)
         predictions = self.fc_out(outputs).squeeze(1)
         return predictions, hidden, cell
 
@@ -463,9 +469,6 @@ class Seq2SeqModelSA(nn.Module):
                               self.vocab_size).to(self.device)
         # print(outputs.shape)
 
-        if eval:
-            best_guesses = np.ones((batch_size, self.target_len))
-
         for t in range(1, self.target_len):
 
             # logits, decoder_hidden_state, decoder_cell_state, _ = \
@@ -473,47 +476,97 @@ class Seq2SeqModelSA(nn.Module):
                 self.decoder(decoder_input, encoder_outputs,
                              decoder_hidden_state, decoder_cell_state,)
 
-            best_guess = logits.argmax(-1)
             outputs[:, t, :] = logits
 
-            if not eval:
-                # decoder_input = torch.where(
-                #     # Align dimensions for broadcasting
-                #     use_teacher_forcing.unsqueeze(1),
-                #     # Use target token (teacher forcing)
-                #     targets[:, t].unsqueeze(1),
-                #     best_guess.unsqueeze(1)     # Use model's predicted token
-                # ).squeeze(1)
+            if targets is not None:
                 decoder_input = targets[:, t].unsqueeze(1)
-                # print(decoder_input)
-            else:
-                decoder_input = best_guess.unsqueeze(1)
-                best_guess_np = best_guess.detach().cpu().numpy()
-                best_guesses[:, t] = best_guess_np
-                # print(best_guesses)
-                # best_guesses.append(best_guess.item())
+                print(decoder_input.shape)
+            # else:
+            #     decoder_input
 
-        # print(outputs.shape)
-        if not eval:
-            return outputs
-        else:
-            return outputs, best_guesses
+        return outputs
+
+
+class DecoderSACA(nn.Module):
+    def __init__(self, hidden_dim: int, vocab_size: int, embed_dim: int,
+                 num_heads: int):
+        super(Decoder, self).__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.hidden_dim = hidden_dim
+        self.vocab_size = vocab_size
+
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+
+        # Self-Attention for decoder's own tokens (causal)
+        self.self_attention = nn.MultiheadAttention(embed_dim, num_heads,
+                                                    batch_first=True)
+
+        # Cross-Attention (queries from decoder, keys/values from encoder)
+        self.cross_attention = nn.MultiheadAttention(embed_dim, num_heads,
+                                                     batch_first=True)
+
+        self.lstm = nn.LSTM(embed_dim + hidden_dim, hidden_dim,
+                            batch_first=True)
+        self.fc_out = nn.Linear(hidden_dim, vocab_size)
+
+    def forward(self, target_token, encoder_outputs, decoder_hidden_state,
+                decoder_cell_state):
+        """
+        Args:
+            target_token: (B, 1) Last generated token.
+            encoder_outputs: (B, S, H) Encoder outputs (Keys & Values for
+            cross-attention).
+            decoder_hidden_state: (1, B, H) Previous LSTM hidden state.
+            decoder_cell_state: (1, B, H) Previous LSTM cell state.
+
+        Returns:
+            next_token_logits: (B, V) Predicted token logits for next step.
+            hidden: (1, B, H) Updated hidden state.
+            cell: (1, B, H) Updated cell state.
+        """
+
+        # 1. Embed token (B, 1, E)
+        embedded = self.embedding(target_token)
+
+        # 2. Apply Self-Attention (no mask needed for one token)
+        self_attn_output, _ = self.self_attention(embedded, embedded,
+                                                  embedded)
+
+        # 3. Apply Cross-Attention (Queries from Self-Attention Output, Keys &
+        # Values from Encoder)
+        cross_attn_output, _ = self.cross_attention(self_attn_output,
+                                                    encoder_outputs,
+                                                    encoder_outputs)
+
+        # 4. LSTM processes the combined representation
+        lstm_input = torch.cat((cross_attn_output, encoder_outputs[:, :1, :]),
+                               dim=2)  # (B, 1, E + H)
+        outputs, (hidden, cell) = self.lstm(lstm_input, (decoder_hidden_state,
+                                                         decoder_cell_state))
+
+        # 5. Predict next token
+        next_token_logits = self.fc_out(outputs[:, -1, :])  # (B, V)
+
+        return next_token_logits, hidden, cell
 
 
 class CrossAttentionModel(nn.Module):
     def __init__(self, hidden_dim: int, vocab_size: int,
                  embed_dim: int, num_heads: int, sos_token_id: int,
-                 device: torch.device):
+                 pad_token_id: int, device: torch.device):
         super(CrossAttentionModel, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.vocab_size = vocab_size
         self.sos_token_id = sos_token_id
+        self.pad_token_id = pad_token_id
         self.encoder = Encoder(vocab_size, embed_dim, hidden_dim)
-        self.decoder = Decoder(hidden_dim, vocab_size, embed_dim, num_heads)
+        self.decoder = DecoderSACA(hidden_dim, vocab_size, embed_dim,
+                                   num_heads)
         self.device = device
 
-    def forward(self, inputs, targets, eval=False):
+    def forward(self, inputs, targets=None):
 
         encoder_outputs, decoder_hidden_state, decoder_cell_state = \
             self.encoder(inputs)
@@ -524,10 +577,7 @@ class CrossAttentionModel(nn.Module):
                               self.vocab_size).to(self.device)
 
         decoder_input = torch.tensor([self.sos_token_id] * batch_size) \
-            .reshape(-1, 1).to(self.device)
-
-        if eval:
-            best_guesses = np.ones((batch_size, target_len))
+            .unsqueeze(1).to(self.device)
 
         for t in range(target_len):
 
@@ -536,25 +586,11 @@ class CrossAttentionModel(nn.Module):
                 decoder_cell_state
             )
             outputs[:, t, :] = logits
-            best_guess = logits.argmax(-1)
 
-            if not eval:
-                # decoder_input = torch.where(
-                #     # Align dimensions for broadcasting
-                #     use_teacher_forcing.unsqueeze(1),
-                #     # Use target token (teacher forcing)
-                #     targets[:, t].unsqueeze(1),
-                #     best_guess.unsqueeze(1)     # Use model's predicted token
-                # ).squeeze(1)
+            if targets is not None:
                 decoder_input = targets[:, t].unsqueeze(1)
-                # print(decoder_input)
             else:
-                decoder_input = best_guess.unsqueeze(1)
-                best_guess_np = best_guess.detach().cpu().numpy()
-                best_guesses[:, t] = best_guess_np
+                decoder_input = logits.argmax(-1)
+                decoder_input = decoder_input.unsqueeze(1)
 
-        # print(outputs.shape)
-        if not eval:
-            return outputs
-        else:
-            return outputs, best_guesses
+        return outputs
