@@ -502,7 +502,8 @@ class Seq2SeqModelSA(nn.Module):
 
 class CrossAttentionModel(nn.Module):
     def __init__(self, hidden_dim: int, vocab_size: int,
-                 embed_dim: int, num_heads: int, sos_token_id: int):
+                 embed_dim: int, num_heads: int, sos_token_id: int,
+                 device: torch.device):
         super(CrossAttentionModel, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
@@ -510,7 +511,7 @@ class CrossAttentionModel(nn.Module):
         self.sos_token_id = sos_token_id
         self.encoder = Encoder(vocab_size, embed_dim, hidden_dim)
         self.decoder = Decoder(hidden_dim, vocab_size, embed_dim, num_heads)
-        self.device = torch.device('cpu')
+        self.device = device
 
     def forward(self, inputs, targets, eval=False):
 

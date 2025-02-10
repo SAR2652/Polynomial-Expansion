@@ -116,7 +116,7 @@ def train_model(args):
     #                   tokenizer.MAX_SEQUENCE_LENGTH, device)
     # model = CrossAttentionModel(encoder, mhad)
     model = CrossAttentionModel(hidden_dim, tokenizer.vocab_size, embed_dim,
-                                num_heads, tokenizer.sos_token_id)
+                                num_heads, tokenizer.sos_token_id, device)
 
     model = model.to(device)
     optimizer = Adam(model.parameters(), lr=learning_rate)
