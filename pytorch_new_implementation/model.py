@@ -554,13 +554,12 @@ class DecoderSACA(nn.Module):
 class CrossAttentionModel(nn.Module):
     def __init__(self, hidden_dim: int, vocab_size: int,
                  embed_dim: int, num_heads: int, sos_token_id: int,
-                 pad_token_id: int, device: torch.device):
+                 device: torch.device):
         super(CrossAttentionModel, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.vocab_size = vocab_size
         self.sos_token_id = sos_token_id
-        self.pad_token_id = pad_token_id
         self.encoder = Encoder(vocab_size, embed_dim, hidden_dim)
         self.decoder = DecoderSACA(hidden_dim, vocab_size, embed_dim,
                                    num_heads)
