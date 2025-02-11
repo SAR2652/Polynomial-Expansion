@@ -546,7 +546,7 @@ class DecoderSACA(nn.Module):
         # 5. Predict next token
         next_token_logits = self.fc_out(outputs)  # (B, 1, V)
 
-        return next_token_logits.unsqueeze(1), hidden, cell
+        return next_token_logits.squeeze(1), hidden, cell
 
 
 class CrossAttentionModel(nn.Module):
