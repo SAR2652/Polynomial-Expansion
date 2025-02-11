@@ -499,12 +499,10 @@ class DecoderSACA(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embed_dim)
 
         # Self-Attention for decoder's own tokens (causal)
-        self.self_attention = nn.MultiheadAttention(embed_dim, num_heads,
-                                                    batch_first=True)
+        self.self_attention = MultiHeadAttention(embed_dim, num_heads)
 
         # Cross-Attention (queries from decoder, keys/values from encoder)
-        self.cross_attention = nn.MultiheadAttention(embed_dim, num_heads,
-                                                     batch_first=True)
+        self.cross_attention = MultiHeadAttention(embed_dim, num_heads)
 
         self.lstm = nn.LSTM(embed_dim + hidden_dim, hidden_dim,
                             batch_first=True)
@@ -530,23 +528,23 @@ class DecoderSACA(nn.Module):
         embedded = self.embedding(target_token)
 
         # 2. Apply Self-Attention (no mask needed for one token)
-        self_attn_output, _ = self.self_attention(embedded, embedded,
-                                                  embedded)
+        self_attn_output = self.self_attention(embedded, embedded,
+                                               embedded)
 
         # 3. Apply Cross-Attention (Queries from Self-Attention Output, Keys &
         # Values from Encoder)
-        cross_attn_output, _ = self.cross_attention(self_attn_output,
-                                                    encoder_outputs,
-                                                    encoder_outputs)
+        cross_attn_output = self.cross_attention(self_attn_output,
+                                                 encoder_outputs,
+                                                 encoder_outputs)
 
         # 4. LSTM processes the combined representation
-        lstm_input = torch.cat((cross_attn_output, encoder_outputs[:, :1, :]),
+        lstm_input = torch.cat((embedded, cross_attn_output),
                                dim=2)  # (B, 1, E + H)
         outputs, (hidden, cell) = self.lstm(lstm_input, (decoder_hidden_state,
                                                          decoder_cell_state))
 
         # 5. Predict next token
-        next_token_logits = self.fc_out(outputs[:, -1, :])  # (B, V)
+        next_token_logits = self.fc_out(outputs)  # (B, 1, V)
 
         return next_token_logits, hidden, cell
 
@@ -588,8 +586,12 @@ class CrossAttentionModel(nn.Module):
 
             if targets is not None:
                 decoder_input = targets[:, t].unsqueeze(1)
+                # print(f'Training Shape = {decoder_input.shape}')
             else:
+                # print(f'Eval Logits Shape = {logits.shape}')
                 decoder_input = logits.argmax(-1)
+                # print(f'Eval Shape 1 = {decoder_input.shape}')
                 decoder_input = decoder_input.unsqueeze(1)
+                # print(f'Eval Shape 2 = {decoder_input.shape}')
 
         return outputs
