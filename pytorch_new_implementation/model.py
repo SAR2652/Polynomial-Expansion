@@ -589,7 +589,7 @@ class CrossAttentionModel(nn.Module):
                 # print(f'Training Shape = {decoder_input.shape}')
             else:
                 # print(f'Eval Logits Shape = {logits.shape}')
-                decoder_input = logits.argmax(-1)
+                # decoder_input = logits.argmax(-1)
                 # print(f'Eval Shape 1 = {decoder_input.shape}')
                 decoder_input = decoder_input.unsqueeze(1)
                 # print(f'Eval Shape 2 = {decoder_input.shape}')

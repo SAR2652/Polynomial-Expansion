@@ -14,7 +14,8 @@ def get_arguments():
                         type=str, default='./output/training.csv')
     parser.add_argument('--ckpt_filepath',
                         help='Model checkpoint filepath',
-                        type=str, default='./output/best_model_sa_ca.pth')
+                        type=str, default='./output/best_model_saca_latest.pth'
+                        )
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
                         type=int, default=64)
@@ -69,7 +70,7 @@ def batched_inference(args):
     device = torch.device(accelerator)
 
     df = pd.read_csv(input_filepath)
-    df = df.iloc[:4, :]
+    df = df.iloc[10:20, :]
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
@@ -89,6 +90,7 @@ def batched_inference(args):
     #                   num_heads, tokenizer.sos_token_id,
     #                   tokenizer.MAX_SEQUENCE_LENGTH, device)
     # model = CrossAttentionModel(encoder, mhad)
+
     model = CrossAttentionModel(hidden_dim, tokenizer.vocab_size, embed_dim,
                                 num_heads, tokenizer.sos_token_id, device)
     model = model.to(device)

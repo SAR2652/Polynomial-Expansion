@@ -6,6 +6,6 @@ python -m pytorch_new_implementation.train \
     --embed_dim 64 \
     --epochs 500 \
     --batch_size 768 \
-    --learning_rate 1e-3 \
-    # --continue_from_ckpt \
-    # --ckpt_file ./output/best_model.pth
+    --learning_rate 1e-4 \
+    --continue_from_ckpt \
+    --ckpt_file ./output/best_model_saca.pth

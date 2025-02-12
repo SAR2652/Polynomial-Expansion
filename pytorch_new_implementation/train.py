@@ -132,7 +132,7 @@ def train_model(args):
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
     min_avg_loss = float('inf')
-    best_model_path = os.path.join(output_dir, 'best_model_saca.pth')
+    best_model_path = os.path.join(output_dir, 'best_model_saca_latest.pth')
 
     for epoch in range(epochs):
 
