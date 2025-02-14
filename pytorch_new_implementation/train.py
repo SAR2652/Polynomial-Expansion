@@ -74,12 +74,12 @@ def train_model(args):
     epochs = args.epochs
     batch_size = args.batch_size
     tokenizer_filepath = args.tokenizer_filepath
-    # teacher_force_ratio = args.teacher_force_ratio
+    teacher_force_ratio = args.teacher_force_ratio
     random_state = args.random_state
     fca = args.fca
     continue_from_ckpt = args.continue_from_ckpt
     ckpt_file = args.ckpt_file
-    # bidirectional = args.bidirectional
+    bidirectional = args.bidirectional
     tokenizer = load_tokenizer(tokenizer_filepath)
 
     torch.manual_seed(random_state)
@@ -116,7 +116,8 @@ def train_model(args):
     #                   tokenizer.MAX_SEQUENCE_LENGTH, device)
     # model = CrossAttentionModel(encoder, mhad)
     model = CrossAttentionModel(hidden_dim, tokenizer.vocab_size, embed_dim,
-                                num_heads, tokenizer.sos_token_id, device)
+                                num_heads, tokenizer.sos_token_id, device,
+                                bidirectional, teacher_force_ratio)
 
     model = model.to(device)
     optimizer = Adam(model.parameters(), lr=learning_rate)
@@ -132,7 +133,9 @@ def train_model(args):
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
     min_avg_loss = float('inf')
-    best_model_path = os.path.join(output_dir, 'best_model_saca_latest.pth')
+    name = 'best_model_saca'
+    if bidirectional:
+        name += '_bidirect'
 
     for epoch in range(epochs):
 
@@ -181,6 +184,7 @@ def train_model(args):
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict()
             }
+            best_model_path = os.path.join(output_dir, f'{name}_{epoch}.pth')
             torch.save(state, best_model_path)
 
 

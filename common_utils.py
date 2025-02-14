@@ -25,6 +25,7 @@ class Tokenizer:
     sos_token_id = 1
     eos_token = '</s>'
     eos_token_id = 2
+    special_token_ids = [pad_token_id, sos_token_id, eos_token_id]
 
     def __init__(self):
         self.vocab_dict = dict()
@@ -80,17 +81,13 @@ class Tokenizer:
 
     def decode_expression(self, expression):
         """Convert IDs to their corresponding tokens"""
-        special_token_ids = [self.sos_token_id, self.eos_token_id,
-                             self.pad_token_id]
         return ''.join([self.id_dict[id] for id in expression if id not in
-                        special_token_ids])
+                        self.special_token_ids])
 
     def batch_decode_expressions(self, expressions):
         """Convert IDs to their corresponding tokens"""
-        special_token_ids = [self.sos_token_id, self.eos_token_id,
-                             self.pad_token_id]
         return [''.join([self.id_dict[id] for id in expression if id not in
-                        special_token_ids]) for expression in expressions]
+                        self.special_token_ids]) for expression in expressions]
 
     def validate(self):
         for k, v in self.vocab_dict.items():

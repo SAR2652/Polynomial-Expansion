@@ -5,6 +5,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def reshape_vec(vec):
+    # vec shape: (2, batch_size, hidden_size)
+    # Shape: (batch_size, 2, hidden_size)
+    vec = vec.permute(1, 0, 2)
+    # Shape: (batch_size, 1, 2 * hidden_size)
+    vec = vec.reshape(vec.shape[0], 1, -1)
+    return vec.permute(1, 0, 2)
+
+
 class Encoder(nn.Module):
     def __init__(self, vocab_size: int, embed_dim: int, hidden_dim: int,
                  bidirectional: bool = False, p: float = 0.2):
@@ -23,15 +32,8 @@ class Encoder(nn.Module):
         outputs, (hidden, cell) = self.lstm(embeddings)
 
         if self.bidirectional:      # Merge forward and backward hidden states
-            hidden_reshaped = hidden.transpose(0, 1)
-            hidden_reshaped = hidden_reshaped.reshape(hidden_reshaped.size(0),
-                                                      -1).unsqueeze(0)
-            hidden = hidden_reshaped
-
-            cell_reshaped = cell.transpose(0, 1)
-            cell_reshaped = cell_reshaped.reshape(cell_reshaped.size(0),
-                                                  -1).unsqueeze(0)
-            cell = cell_reshaped
+            hidden = reshape_vec(hidden)
+            cell = reshape_vec(cell)
 
         return outputs, hidden, cell
 
@@ -488,12 +490,10 @@ class Seq2SeqModelSA(nn.Module):
 
 
 class DecoderSACA(nn.Module):
-    def __init__(self, hidden_dim: int, vocab_size: int, embed_dim: int,
-                 num_heads: int):
+    def __init__(self, embed_dim: int, num_heads: int, vocab_size: int):
         super(DecoderSACA, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
-        self.hidden_dim = hidden_dim
         self.vocab_size = vocab_size
 
         self.embedding = nn.Embedding(vocab_size, embed_dim)
@@ -504,9 +504,9 @@ class DecoderSACA(nn.Module):
         # Cross-Attention (queries from decoder, keys/values from encoder)
         self.cross_attention = MultiHeadAttention(embed_dim, num_heads)
 
-        self.lstm = nn.LSTM(embed_dim + hidden_dim, hidden_dim,
+        self.lstm = nn.LSTM(2 * embed_dim, embed_dim,
                             batch_first=True)
-        self.fc_out = nn.Linear(hidden_dim, vocab_size)
+        self.fc_out = nn.Linear(embed_dim, vocab_size)
 
     def forward(self, target_token, encoder_outputs, decoder_hidden_state,
                 decoder_cell_state):
@@ -531,11 +531,16 @@ class DecoderSACA(nn.Module):
         self_attn_output = self.self_attention(embedded, embedded,
                                                embedded)
 
+        # print(f'Self Attention Output Shape = {self_attn_output.shape}')
+
         # 3. Apply Cross-Attention (Queries from Self-Attention Output, Keys &
         # Values from Encoder)
         cross_attn_output = self.cross_attention(self_attn_output,
                                                  encoder_outputs,
                                                  encoder_outputs)
+
+        # print(f'Cross Attention Output Shape = {cross_attn_output.shape}')
+        # print(f'Embedded Shape = {embedded.shape}')
 
         # 4. LSTM processes the combined representation
         lstm_input = torch.cat((embedded, cross_attn_output),
@@ -550,23 +555,33 @@ class DecoderSACA(nn.Module):
 
 
 class CrossAttentionModel(nn.Module):
-    def __init__(self, hidden_dim: int, vocab_size: int,
-                 embed_dim: int, num_heads: int, sos_token_id: int,
-                 device: torch.device):
+    def __init__(self, enc_embed_dim: int, hidden_dim: int, vocab_size: int,
+                 num_heads: int, sos_token_id: int,
+                 device: torch.device, bidirectional: bool = False,
+                 teacher_force_ratio: float = 0.5):
         super(CrossAttentionModel, self).__init__()
-        self.embed_dim = embed_dim
+        self.enc_embed_dim = enc_embed_dim
         self.num_heads = num_heads
         self.vocab_size = vocab_size
         self.sos_token_id = sos_token_id
-        self.encoder = Encoder(vocab_size, embed_dim, hidden_dim)
-        self.decoder = DecoderSACA(hidden_dim, vocab_size, embed_dim,
-                                   num_heads)
+        self.bidirectional = bidirectional
+        self.encoder = Encoder(vocab_size, enc_embed_dim, hidden_dim,
+                               bidirectional)
+
+        if bidirectional:
+            hidden_dim *= 2
+
+        self.decoder = DecoderSACA(hidden_dim, num_heads, vocab_size)
         self.device = device
 
     def forward(self, inputs, targets=None):
 
         encoder_outputs, decoder_hidden_state, decoder_cell_state = \
             self.encoder(inputs)
+
+        # print(f'Encoder Outputs Shape = {encoder_outputs.shape}')
+        # print(f'Decoder Hidden Shape = {decoder_hidden_state.shape}')
+        # print(f'Decoder Cell Shape = {decoder_cell_state.shape}')
 
         batch_size, target_len, _ = encoder_outputs.shape
 
@@ -589,7 +604,7 @@ class CrossAttentionModel(nn.Module):
                 # print(f'Training Shape = {decoder_input.shape}')
             else:
                 # print(f'Eval Logits Shape = {logits.shape}')
-                # decoder_input = logits.argmax(-1)
+                decoder_input = logits.argmax(-1)
                 # print(f'Eval Shape 1 = {decoder_input.shape}')
                 decoder_input = decoder_input.unsqueeze(1)
                 # print(f'Eval Shape 2 = {decoder_input.shape}')

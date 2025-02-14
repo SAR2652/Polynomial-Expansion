@@ -6,9 +6,8 @@ python -m pytorch_new_implementation.train \
     --embed_dim 64 \
     --epochs 1000 \
     --batch_size 768 \
-    --learning_rate 1e-5 \
-    --continue_from_ckpt \
-    --ckpt_file /kaggle/input/polyexpand-saca/pytorch/default/1/best_model_saca.pth
+    --learning_rate 1e-4 \
+    --bidirectional
 
 # python -m jax_implementation.train \
 #     --input_filepath /kaggle/input/polynomialexpansion/training.csv \

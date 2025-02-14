@@ -24,7 +24,7 @@ def get_arguments():
                         type=int, default=64)
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=2)
+                        type=int, default=1)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -105,6 +105,7 @@ def batched_inference(args):
     for i, batch in enumerate(val_dataloader):
 
         inputs, targets, f, e = batch
+        print(f'{inputs}={targets}')
         inputs = torch.from_numpy(inputs).type(torch.LongTensor) \
             .to(device, non_blocking=True)
         targets = torch.from_numpy(targets).type(torch.LongTensor) \
@@ -115,9 +116,9 @@ def batched_inference(args):
         curr_expressions = tokenizer.batch_decode_expressions(best_guesses)
         expressions.extend(curr_expressions)
 
-    factors = df['factor'].tolist()
-    for i in range(len(expressions)):
-        print(f'{factors[i]}={expressions[i]}')
+    # factors = df['factor'].tolist()
+    # for i in range(len(expressions)):
+    #     print(f'{factors[i]}={expressions[i]}')
 
 
 def main():
