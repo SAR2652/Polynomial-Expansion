@@ -565,6 +565,7 @@ class CrossAttentionModel(nn.Module):
         self.vocab_size = vocab_size
         self.sos_token_id = sos_token_id
         self.bidirectional = bidirectional
+        self.teacher_force_ratio = teacher_force_ratio
         self.encoder = Encoder(vocab_size, enc_embed_dim, hidden_dim,
                                bidirectional)
 
@@ -599,7 +600,9 @@ class CrossAttentionModel(nn.Module):
             )
             outputs[:, t, :] = logits
 
-            if targets is not None:
+            use_teacher_forcing = random.random() < self.teacher_force_ratio
+
+            if targets is not None and use_teacher_forcing:
                 decoder_input = targets[:, t].unsqueeze(1)
                 # print(f'Training Shape = {decoder_input.shape}')
             else:

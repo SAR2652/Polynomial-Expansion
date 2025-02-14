@@ -115,7 +115,7 @@ def train_model(args):
     #                   num_heads, tokenizer.sos_token_id,
     #                   tokenizer.MAX_SEQUENCE_LENGTH, device)
     # model = CrossAttentionModel(encoder, mhad)
-    model = CrossAttentionModel(hidden_dim, tokenizer.vocab_size, embed_dim,
+    model = CrossAttentionModel(embed_dim, hidden_dim, tokenizer.vocab_size,
                                 num_heads, tokenizer.sos_token_id, device,
                                 bidirectional, teacher_force_ratio)
 
