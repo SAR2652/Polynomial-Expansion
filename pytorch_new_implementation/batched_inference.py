@@ -1,6 +1,7 @@
 import torch
 import argparse
 import pandas as pd     # type: ignore
+import torch.nn.functional as F
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from common_utils import load_tokenizer, collate_fn
@@ -11,10 +12,11 @@ def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_filepath',
                         help='CSV file containing training data',
-                        type=str, default='./output/training.csv')
+                        type=str, default='./output/validation.csv')
     parser.add_argument('--ckpt_filepath',
                         help='Model checkpoint filepath',
-                        type=str, default='./output/best_model_saca_latest.pth'
+                        type=str, default='./output/best_model_saca_bidirect'
+                        '_197.pth'
                         )
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
@@ -53,7 +55,7 @@ def batched_inference(args):
     hidden_dim = args.hidden_dim
     batch_size = args.batch_size
     tokenizer_filepath = args.tokenizer_filepath
-    # bidirectional = args.bidirectional
+    bidirectional = args.bidirectional
     num_heads = args.num_heads
 
     random_state = args.random_state
@@ -70,7 +72,7 @@ def batched_inference(args):
     device = torch.device(accelerator)
 
     df = pd.read_csv(input_filepath)
-    df = df.iloc[10:20, :]
+    df = df.iloc[10:30, :]
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
@@ -91,8 +93,9 @@ def batched_inference(args):
     #                   tokenizer.MAX_SEQUENCE_LENGTH, device)
     # model = CrossAttentionModel(encoder, mhad)
 
-    model = CrossAttentionModel(hidden_dim, tokenizer.vocab_size, embed_dim,
-                                num_heads, tokenizer.sos_token_id, device)
+    model = CrossAttentionModel(embed_dim, hidden_dim, tokenizer.vocab_size,
+                                num_heads, tokenizer.sos_token_id, device,
+                                bidirectional)
     model = model.to(device)
 
     ckpt = torch.load(ckpt_filepath, map_location=device, weights_only=True)
@@ -105,20 +108,24 @@ def batched_inference(args):
     for i, batch in enumerate(val_dataloader):
 
         inputs, targets, f, e = batch
-        print(f'{inputs}={targets}')
+        # print(f'{inputs}={targets}')
         inputs = torch.from_numpy(inputs).type(torch.LongTensor) \
             .to(device, non_blocking=True)
         targets = torch.from_numpy(targets).type(torch.LongTensor) \
             .to(device, non_blocking=True)
         logits = model(inputs)
-        best_guesses = logits.argmax(-1).detach().cpu().numpy()
+        # print(logits)
+        probs = F.softmax(logits, dim=-1)
+        # print(probs)
+        best_guesses = probs.argmax(-1).detach().cpu().numpy()
+        # print(best_guesses)
 
         curr_expressions = tokenizer.batch_decode_expressions(best_guesses)
         expressions.extend(curr_expressions)
 
-    # factors = df['factor'].tolist()
-    # for i in range(len(expressions)):
-    #     print(f'{factors[i]}={expressions[i]}')
+    factors = df['factor'].tolist()
+    for i in range(len(expressions)):
+        print(f'{factors[i]}={expressions[i]}')
 
 
 def main():

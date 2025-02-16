@@ -1,1 +1,1 @@
-python inference.py ./data/validation.csv --accelerator cuda
+python -m pytorch_new_implementation.batched_inference --bidirectional

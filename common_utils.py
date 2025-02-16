@@ -81,13 +81,26 @@ class Tokenizer:
 
     def decode_expression(self, expression):
         """Convert IDs to their corresponding tokens"""
-        return ''.join([self.id_dict[id] for id in expression if id not in
-                        self.special_token_ids])
+        output_sequence = list()
+        for id in expression:
+            if id == self.eos_token_id:
+                break
+            elif id in self.special_token_ids:
+                continue
+            output_sequence.append(self.id_dict[id])
+
+        return output_sequence
 
     def batch_decode_expressions(self, expressions):
         """Convert IDs to their corresponding tokens"""
-        return [''.join([self.id_dict[id] for id in expression if id not in
-                        self.special_token_ids]) for expression in expressions]
+
+        batch_decoded_expressions_map = map(self.decode_expression,
+                                            expressions)
+
+        batch_concat_operation_map = map(''.join,
+                                         batch_decoded_expressions_map)
+
+        return batch_concat_operation_map
 
     def validate(self):
         for k, v in self.vocab_dict.items():
