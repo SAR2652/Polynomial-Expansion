@@ -56,7 +56,7 @@ def get_training_arguments():
     parser.add_argument('--teacher_force_ratio',
                         type=float, default=0.5)
     parser.add_argument('--bidirectional',
-                        type=bool, default=False,
+                        action='store_true',
                         help='Use bidirectional model')
     parser.add_argument('--continue_from_ckpt',
                         action='store_true',
