@@ -67,7 +67,7 @@ def get_training_arguments():
     return parser.parse_args()
 
 
-@functools.partial(jax.pmap,
+@functools.partial(jax.pmap, axis_name='ensemble',
                    static_broadcasted_argnums=[i + 2 for i in range(3)])
 def init_train_state(model, random_key, batch_size, seq_len, learning_rate
                      ) -> train_state.TrainState:
@@ -89,7 +89,7 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
     )
 
 
-@jax.pmap
+@functools.partial(jax.pmap, axis_name='batch')
 def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
                targets: jnp.ndarray):
 
