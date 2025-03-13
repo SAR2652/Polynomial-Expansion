@@ -97,10 +97,11 @@ def update_model(state, grads):
 def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
                targets: jnp.ndarray):
 
+    targets = targets.reshape(-1)
+
     def loss_fn(params):
         logits = state.apply_fn({'params': params}, inputs)
         logits = logits.reshape(-1, logits.shape[-1])
-        targets = targets.reshape(-1)   # ignore
         loss = optax.softmax_cross_entropy_with_integer_labels(logits,
                                                                targets)
         loss = loss.mean()
