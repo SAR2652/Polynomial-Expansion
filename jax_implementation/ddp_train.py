@@ -87,7 +87,7 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
     )
 
 
-@jax.pmap
+@functools.partial(jax.pmap, in_axes=(0, 0, 0), axis_name="batch")
 def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
                targets: jnp.ndarray):
 
