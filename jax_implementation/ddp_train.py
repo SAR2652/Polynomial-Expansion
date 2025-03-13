@@ -67,6 +67,7 @@ def get_training_arguments():
     return parser.parse_args()
 
 
+@jax.pmap
 def init_train_state(model, random_key, batch_size, seq_len, learning_rate
                      ) -> train_state.TrainState:
 
