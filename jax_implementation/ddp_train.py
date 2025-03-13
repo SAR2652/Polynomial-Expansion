@@ -193,6 +193,9 @@ def train_model(args):
                                     tokenizer.MAX_SEQUENCE_LENGTH)
             targets = targets.reshape(num_devices, -1,
                                       tokenizer.MAX_SEQUENCE_LENGTH)
+            
+            print(f'Inputs Shape = {inputs.shape}')
+            print(f'Targets Shape = {targets.shape}')
 
             state, loss, grads = train_step(state, inputs, targets)
             state = update_model(state, grads)
