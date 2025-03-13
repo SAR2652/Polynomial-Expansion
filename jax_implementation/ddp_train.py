@@ -87,7 +87,7 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
     )
 
 
-@jax.pmap
+@functools.partial(jax.pmap, axis_name='num_devices')
 def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
                targets: jnp.ndarray):
 
@@ -100,8 +100,8 @@ def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
     gradient_fn = jax.value_and_grad(loss_fn, has_aux=True)
     (loss, _), grads = gradient_fn(state.params)
 
-    grads = jax.lax.pmean(grads, axis_name="batch")
-    loss = jax.lax.pmean(loss, axis_name="batch")
+    grads = jax.lax.pmean(grads, axis_name="num_devices")
+    loss = jax.lax.pmean(loss, axis_name="num_devices")
 
     state = state.apply_gradients(grads=grads)
     return state, loss
