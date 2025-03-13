@@ -91,6 +91,9 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
 def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
                targets: jnp.ndarray):
 
+    print(f"Inside train_step - Inputs shape: {inputs.shape}, "
+          f"Targets shape: {targets.shape}")
+
     def loss_fn(params):
         logits = state.apply_fn({'params': params}, inputs)
         loss = optax.softmax_cross_entropy_with_integer_labels(logits,
