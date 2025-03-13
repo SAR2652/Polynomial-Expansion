@@ -117,7 +117,7 @@ def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
     (loss, _), grads = gradient_fn(state.params)
 
     loss = jax.lax.pmean(loss, axis_name='num_devices')
-    print(f'AllReduce Loss = {loss.shape}')
+    print(f'AllReduce Loss = {loss}')
     grads = jax.lax.pmean(grads, axis_name='num_devices')
 
     return state, loss, grads
