@@ -99,8 +99,11 @@ def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
 
     def loss_fn(params):
         logits = state.apply_fn({'params': params}, inputs)
+        print(logits.shape)
+        print(targets.shape)
         loss = optax.softmax_cross_entropy_with_integer_labels(logits,
-                                                               targets)
+                                                               targets,
+                                                               axis=-1)
         return loss.mean(), logits
 
     gradient_fn = jax.value_and_grad(loss_fn, has_aux=True)
@@ -187,7 +190,6 @@ def train_model(args):
             state = update_model(state, grads)
 
             print(loss)
-            exit(0)
             running_loss += loss.mean().item()
             if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
