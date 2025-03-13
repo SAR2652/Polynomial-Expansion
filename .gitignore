@@ -6,3 +6,5 @@ output/
 models/
 pat.txt
 tests/
+pytorch_tests/
+jax_tests/

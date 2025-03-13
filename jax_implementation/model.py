@@ -15,36 +15,52 @@ class EncoderFLAX(nn.Module):
         if self.bidirectional:
             self.backward_lstm = nn.LSTMCell(self.hidden_dim)
 
-    def __call__(self, inputs, hidden, cell):
+    def __call__(self, inputs):
         """ Forward pass of encoder """
         embeddings = self.embedding(inputs)
-        _, seq_len, _ = embeddings.shape
+        # print(embeddings.shape)
+        batch_size, seq_len, embed_dim = embeddings.shape
 
-        fwd_hidden = jnp.copy(hidden)
-        bkwd_hidden = jnp.copy(hidden)
-        fwd_cell = jnp.copy(cell)
-        bkwd_cell = jnp.copy(cell)
+        fwd_hidden = jnp.zeros((batch_size, embed_dim))
+        fwd_cell = jnp.zeros((batch_size, embed_dim))
+        bkwd_hidden = jnp.copy(fwd_hidden)
+        bkwd_cell = jnp.copy(fwd_cell)
+
+        # print('hidden and cell states organized')
 
         outputs = []
         # Iterate over sequence
         for t in range(seq_len):
-            fwd_hidden, fwd_cell = self.forward_lstm(fwd_hidden, fwd_cell,
-                                                     embeddings[:, t, :])
+            (fwd_hidden, fwd_cell), _ = self.forward_lstm(
+                (fwd_hidden, fwd_cell), embeddings[:, t, :])
             outputs.append(fwd_hidden)
 
         outputs = jnp.stack(outputs, axis=1)
         # Convert list to array
 
+        # print('outputs organized')
+
         if self.bidirectional:
             backward_outputs = []
             # Iterate over sequence
             for t in range(seq_len - 1, -1, -1):
-                bkwd_hidden, bkwd_cell = self.backward_lstm(
-                    bkwd_hidden, bkwd_cell, embeddings[:, t, :])
+                (bkwd_hidden, bkwd_cell), out = self.backward_lstm(
+                    (bkwd_hidden, bkwd_cell), embeddings[:, t, :])
                 backward_outputs.append(bkwd_hidden)
 
             backward_outputs = jnp.stack(backward_outputs, axis=1)
             outputs = jnp.concatenate([outputs, backward_outputs], axis=-1)
+
+            hidden = jnp.concatenate([fwd_hidden, bkwd_hidden], axis=-1)
+            cell = jnp.concatenate([fwd_cell, bkwd_cell], axis=-1)
+
+        else:
+            hidden = fwd_hidden
+            cell = fwd_cell
+
+        # print(f'Encoder Outputs Shape = {outputs.shape}')
+        # print(f'Encoder Hidden Shape = {hidden.shape}')
+        # print(f'Encoder Cell Shape = {cell.shape}')
 
         return outputs, hidden, cell
 
@@ -155,9 +171,13 @@ class DecoderSACAFLAX(nn.Module):
         # 1. Embed the target token
         embedded = self.embedding(target_token)  # (B, 1, E)
 
+        # print(f'Embedded = {embedded.shape}')
+
         # 2. Apply Self-Attention (causal)
         self_attn_output = self.self_attention(embedded, embedded, embedded)
         # (B, 1, E)
+
+        # print(f'Self Attn = {self_attn_output.shape}')
 
         # 3. Apply Cross-Attention (queries from Self-Attention Output,
         # keys/values from encoder)
@@ -165,13 +185,24 @@ class DecoderSACAFLAX(nn.Module):
                                                  encoder_outputs,
                                                  encoder_outputs)  # (B, 1, E)
 
+        # print(f'Cross Attn = {cross_attn_output.shape}')
+
         # 4. Concatenate embeddings and attention output
         lstm_input = jnp.concatenate([embedded, cross_attn_output],
                                      axis=-1)  # (B, 1, 2E)
 
+        # lstm_ip_hidden = jnp.zeros((batch_size, self.embed_dim * 2))
+        # lstm_ip_cell = jnp.zeros((batch_size, self.embed_dim * 2))
+        # print(f'LSTM Input = {lstm_input.shape}')
+        # print(f'Hidden Shape = {hidden_state.shape}')
+        # print(f'Cell Shape = {cell_state.shape}')
+
         # 5. LSTM step (JAX LSTMCell operates per timestep)
-        hidden_state, cell_state = self.lstm(hidden_state, cell_state,
-                                             lstm_input)
+        (hidden_state, cell_state), _ = self.lstm(
+            (hidden_state, cell_state), lstm_input[:, 0, :])
+
+        # print(f'Out Hidden Shape = {hidden_state.shape}')
+        # print(f'Out Shape = {out.shape}')
 
         # 6. Predict next token
         next_token_logits = self.fc_out(hidden_state)  # (B, 1, V)
@@ -225,6 +256,8 @@ class CrossAttentionModelFLAX(nn.Module):
                 decoder_input, encoder_outputs, decoder_hidden_state,
                 decoder_cell_state
             )
+
+            # print(f'Logits Shape = {logits.shape}')
 
             outputs = outputs.at[:, t, :].set(logits)
 
