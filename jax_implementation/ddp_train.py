@@ -87,7 +87,7 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
     )
 
 
-@functools.partial(jax.pmap, axis_name='batch')
+@jax.pmap
 def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
                targets: jnp.ndarray):
 
@@ -125,7 +125,7 @@ def train_model(args):
     continue_from_ckpt = args.continue_from_ckpt
     ckpt_file = args.ckpt_file
     num_devices = jax.local_device_count()
-    print(f'Number of ')
+    print(f'Number of Devices = {num_devices}')
 
     df = pd.read_csv(input_file)
 
