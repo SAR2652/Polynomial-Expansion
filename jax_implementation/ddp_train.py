@@ -97,20 +97,20 @@ def update_model(state, grads):
 def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
                targets: jnp.ndarray):
 
-    print(f'Targets Shape before = {targets.shape}')
-    targets = targets.reshape(targets.shape[0], -1)
-    print(f'Targets Shape after = {targets.shape}')
+    # print(f'Targets Shape before = {targets.shape}')
+    # targets = targets.reshape(targets.shape[0], -1)
+    # print(f'Targets Shape after = {targets.shape}')
 
     def loss_fn(params):
         logits = state.apply_fn({'params': params}, inputs)
-        print(f'Logits Shape before = {logits.shape}')
-        logits = logits.reshape(logits.shape[0], -1, logits.shape[-1])
-        print(f'Logits Shape after = {logits.shape}')
+        # print(f'Logits Shape before = {logits.shape}')
+        # logits = logits.reshape(logits.shape[0], -1, logits.shape[-1])
+        # print(f'Logits Shape after = {logits.shape}')
         loss = optax.softmax_cross_entropy_with_integer_labels(logits,
                                                                targets)
-        print(f'Process Loss = {loss.shape}')
+        # print(f'Process Loss = {loss.shape}')
         loss = loss.mean()
-        print(f'Process Mean Loss = {loss.shape}')
+        # print(f'Process Mean Loss = {loss.shape}')
         return loss, logits
 
     gradient_fn = jax.value_and_grad(loss_fn, has_aux=True)
@@ -193,15 +193,15 @@ def train_model(args):
                                     tokenizer.MAX_SEQUENCE_LENGTH)
             targets = targets.reshape(num_devices, -1,
                                       tokenizer.MAX_SEQUENCE_LENGTH)
-            
-            print(f'Inputs Shape = {inputs.shape}')
-            print(f'Targets Shape = {targets.shape}')
+
+            # print(f'Inputs Shape = {inputs.shape}')
+            # print(f'Targets Shape = {targets.shape}')
 
             state, loss, grads = train_step(state, inputs, targets)
             state = update_model(state, grads)
 
-            print(f'Batch Loss = {loss}')
-            print(f'Batch Loss Shape = {loss.shape}')
+            # print(f'Batch Loss = {loss}')
+            # print(f'Batch Loss Shape = {loss.shape}')
             running_loss += loss.mean().item()
             if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
