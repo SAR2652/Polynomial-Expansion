@@ -116,8 +116,8 @@ def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
     gradient_fn = jax.value_and_grad(loss_fn, has_aux=True)
     (loss, _), grads = gradient_fn(state.params)
 
+    # ensures same loss and gradients across all devices
     loss = jax.lax.pmean(loss, axis_name='num_devices')
-    print(f'AllReduce Loss = {loss}')
     grads = jax.lax.pmean(grads, axis_name='num_devices')
 
     return state, loss, grads
@@ -202,6 +202,7 @@ def train_model(args):
 
             # print(f'Batch Loss = {loss}')
             # print(f'Batch Loss Shape = {loss.shape}')
+            # Loss Shape = (num_devices,) and will have one value due to pmean
             running_loss += loss.mean().item()
             if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
