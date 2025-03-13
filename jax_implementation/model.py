@@ -1,209 +1,241 @@
-import jax      # type: ignore
-import jax.numpy as jnp     # type: ignore
-from jax import random     # type: ignore
-from jax.lax import reshape, batch_matmul     # type: ignore
+import random
+import jax.numpy as jnp
+import flax.linen as nn
 
 
-class LSTMCell:
-    def __init__(self):
-        pass
+class EncoderFLAX(nn.Module):
+    vocab_size: int
+    embed_dim: int
+    hidden_dim: int
+    bidirectional: bool = False
 
-    def __call__(self, x_t, h_prev, c_prev, params):
+    def setup(self):
+        self.embedding = nn.Embed(self.vocab_size, self.embed_dim)
+        self.forward_lstm = nn.LSTMCell(self.hidden_dim)
+        if self.bidirectional:
+            self.backward_lstm = nn.LSTMCell(self.hidden_dim)
 
-        temp1 = jnp.dot(h_prev, params['lstm']['cell']['U_f']) + \
-            params['lstm']['cell']['b1_f']
-        temp2 = jnp.dot(x_t, params['lstm']['cell']['W_f']) + \
-            params['lstm']['cell']['b1_f']
-        temp_sum1 = temp1 + temp2
-        f_t = jax.nn.sigmoid(temp_sum1)
-        k_t = f_t * c_prev
+    def __call__(self, inputs, hidden, cell):
+        """ Forward pass of encoder """
+        embeddings = self.embedding(inputs)
+        _, seq_len, _ = embeddings.shape
 
-        temp3 = jnp.dot(h_prev, params['lstm']['cell']['U_g']) + \
-            params['lstm']['cell']['b1_g']
-        temp4 = jnp.dot(x_t, params['lstm']['cell']['W_g']) + \
-            params['lstm']['cell']['b2_g']
-        temp_sum2 = temp3 + temp4
-        g_t = jnp.tanh(temp_sum2)
+        fwd_hidden = jnp.copy(hidden)
+        bkwd_hidden = jnp.copy(hidden)
+        fwd_cell = jnp.copy(cell)
+        bkwd_cell = jnp.copy(cell)
 
-        temp5 = jnp.dot(h_prev, params['lstm']['cell']['U_i']) + \
-            params['lstm']['cell']['b1_i']
-        temp6 = jnp.dot(x_t, params['lstm']['cell']['W_i']) + \
-            params['lstm']['cell']['b2_i']
-        temp_sum3 = temp5 + temp6
-        i_t = jnp.tanh(temp_sum3)
-
-        j_t = g_t * i_t
-
-        c_t = j_t + k_t
-
-        temp7 = jnp.dot(h_prev, params['lstm']['cell']['U_o']) + \
-            params['lstm']['cell']['b1_o']
-        temp8 = jnp.dot(x_t, params['lstm']['cell']['W_o']) + \
-            params['lstm']['cell']['b2_o']
-        temp_sum4 = temp7 + temp8
-        o_t = jnp.tanh(temp_sum4)
-
-        h_t = o_t * jnp.tanh(c_t)
-
-        return h_t, c_t
-
-
-class LSTMLayer:
-    def __init__(self, hidden_dim):
-        self.cell = LSTMCell()
-        self.hidden_dim = hidden_dim
-
-    def __call__(self, x, params, h_0=None, c_0=None,):
-
-        batch_size, seq_len, _ = x.shape
-        h_t = jnp.zeros((batch_size, self.hidden_dim)) if h_0 is None else h_0
-        c_t = jnp.zeros((batch_size, self.hidden_dim)) if c_0 is None else c_0
-
-        outputs = list()
-
+        outputs = []
+        # Iterate over sequence
         for t in range(seq_len):
-            h_t, c_t = self.cell(x[:, t, :], h_t, c_t, params)
-            outputs.append(h_t)
+            fwd_hidden, fwd_cell = self.forward_lstm(fwd_hidden, fwd_cell,
+                                                     embeddings[:, t, :])
+            outputs.append(fwd_hidden)
 
         outputs = jnp.stack(outputs, axis=1)
+        # Convert list to array
 
-        return h_t, c_t, outputs
+        if self.bidirectional:
+            backward_outputs = []
+            # Iterate over sequence
+            for t in range(seq_len - 1, -1, -1):
+                bkwd_hidden, bkwd_cell = self.backward_lstm(
+                    bkwd_hidden, bkwd_cell, embeddings[:, t, :])
+                backward_outputs.append(bkwd_hidden)
 
+            backward_outputs = jnp.stack(backward_outputs, axis=1)
+            outputs = jnp.concatenate([outputs, backward_outputs], axis=-1)
 
-class Encoder:
-    def __init__(self, hidden_dim):
-        self.lstm = LSTMLayer(hidden_dim)
-
-    def __call__(self, params, x):
-
-        embedding = params['embedding'][x]
-
-        hidden, cell, encoder_outputs = self.lstm(embedding, params)
-
-        return hidden, cell, encoder_outputs
-
-
-class BahdanauAttention:
-    def __init__(self, hidden_dim):
-        self.hidden_dim = hidden_dim
-
-    def __call__(self, hidden_state, encoder_outputs, decoder_params):
-
-        batch_size, seq_len, _ = encoder_outputs.shape
-
-        # (batch_size, hidden_dim) -> (batch_size, 1, hidden_dim)
-        hidden_state = jnp.expand_dims(hidden_state, 1)
-        # (batch_size, 1, hidden_dim) -> (batch_size, seq_len, hidden_dim)
-        hidden_state = jnp.broadcast_to(hidden_state,
-                                        (batch_size, seq_len, self.hidden_dim))
-
-        # (batch_size, seq_len, attention_dim)
-        temp1 = jnp.dot(encoder_outputs, decoder_params['attention']['W_h']) \
-            + decoder_params['attention']['b_h']
-
-        # (batch_size, seq_len, attention_dim)
-        temp2 = jnp.dot(hidden_state, decoder_params['attention']['W_c']) + \
-            decoder_params['attention']['b_c']
-        temp_sum = temp1 + temp2
-        temp_out = jnp.tanh(temp_sum)
-        score = jnp.squeeze(jnp.dot(temp_out,
-                                    decoder_params['attention']['V']), -1)
-        attention_weights = jax.nn.softmax(score)
-
-        context_vector = batch_matmul(jnp.expand_dims(attention_weights, 1),
-                                      encoder_outputs)
-        context_vector = jnp.squeeze(context_vector, 1)
-        return context_vector, attention_weights
+        return outputs, hidden, cell
 
 
-class DecoderWithBahdanauAttention:
-    def __init__(self, hidden_dim):
-        self.attention = BahdanauAttention(hidden_dim)
-        self.lstm = LSTMLayer(hidden_dim)
+class MultiHeadAttentionFLAX(nn.Module):
+    embed_dim: int
+    num_heads: int
 
-    def __call__(self, input_token, hidden_state, cell_state, encoder_outputs,
-                 params):
-
-        input_embedding = params['embedding'][input_token]
-
-        context_vector, attention_weights = self.attention(
-             hidden_state, encoder_outputs, params
-        )
-
-        context_vector = jnp.expand_dims(context_vector, axis=1)
-        input_embedding = jnp.expand_dims(input_embedding, axis=1)
-
-        lstm_input = jnp.concatenate((input_embedding, context_vector),
-                                     axis=-1)
-
-        hidden_state, cell_state, _ = self.lstm(lstm_input, params,
-                                                hidden_state, cell_state)
-
-        output = jnp.dot(hidden_state, params['W_fc']) + \
-            params['b_fc']
-
-        return output, hidden_state, cell_state, attention_weights
-
-
-def create_model(hidden_dim):
-    encoder = Encoder(hidden_dim)
-    decoder = DecoderWithBahdanauAttention(hidden_dim)
-    return encoder, decoder
-
-
-class MultiHeadAttention:
-    def __init__(self, embed_dim: int, num_heads: int, prng_key):
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        msg = "Embedding dimension MUST be divisible by number of heads"
-        assert embed_dim % num_heads == 0, msg
-
-        self.head_dim = embed_dim // num_heads
+    def setup(self):
+        assert self.embed_dim % self.num_heads == 0, \
+            "Embedding dim must be divisible by num_heads"
+        self.head_dim = self.embed_dim // self.num_heads
         self.scale = self.head_dim ** -0.5
 
-        k1, k2, k3, k4 = random.split(prng_key, 4)
+        # Linear transformations for Q, K, V
+        self.query_proj = nn.Dense(self.embed_dim)
+        self.key_proj = nn.Dense(self.embed_dim)
+        self.value_proj = nn.Dense(self.embed_dim)
 
-        self.query = random.normal(k1, (embed_dim, embed_dim))
-        self.key = random.normal(k2, (embed_dim, embed_dim))
-        self.value = random.normal(k3, (embed_dim, embed_dim))
+        # Output projection
+        self.out_proj = nn.Dense(self.embed_dim)
 
-        self.out = random.normal(k4, (embed_dim, embed_dim))
+    def __call__(self, query, key=None, value=None):
+        batch_size, query_seq_len, _ = query.shape
 
-    def __call__(self, x):
+        # Default to self-attention
+        if key is None:
+            key = query
+        if value is None:
+            value = query
 
-        batch_size, seq_len, _ = x.shape
+        _, key_seq_len, _ = key.shape
+        _, value_seq_len, _ = value.shape
 
-        Q = jnp.dot(x, self.query)
-        K = jnp.dot(x, self.key)
-        V = jnp.dot(x, self.value)
+        # Project queries, keys, and values
+        Q = self.query_proj(query)  # (batch_size, query_seq_len, embed_dim)
+        K = self.key_proj(key)      # (batch_size, key_seq_len, embed_dim)
+        V = self.value_proj(value)  # (batch_size, value_seq_len, embed_dim)
 
-        # Original shape is (batch_size, seq_len, embed_dim)
         # Reshape to (batch_size, seq_len, num_heads, head_dim)
-        # Permute dimensions to (batch_size, num_heads, seq_len, head_dim)
-        Q = reshape(Q, (batch_size, seq_len, self.num_heads, self.head_dim))
-        Q = jnp.permute_dims(Q, (0, 2, 1, 3))
-        K = reshape(K, (batch_size, seq_len, self.num_heads, self.head_dim))
-        K = jnp.permute_dims(K, (0, 2, 1, 3))
-        V = reshape(V, (batch_size, seq_len, self.num_heads, self.head_dim))
-        V = jnp.permute_dims(V, (0, 2, 1, 3))
+        Q = Q.reshape(batch_size, query_seq_len, self.num_heads, self.head_dim)
+        K = K.reshape(batch_size, key_seq_len, self.num_heads, self.head_dim)
+        V = V.reshape(batch_size, value_seq_len, self.num_heads, self.head_dim)
 
-        # Get attention scores of shape:
-        # (batch_size, num_heads, seq_len, seq_len)
-        attention_scores = jnp.dot(Q, jnp.matrix_transpose(K)) * self.scale
-        attention_weights = jax.nn.softmax(attention_scores)
+        # Transpose to (batch_size, num_heads, seq_len, head_dim)
+        Q = jnp.transpose(Q, (0, 2, 1, 3))
+        K = jnp.transpose(K, (0, 2, 1, 3))
+        V = jnp.transpose(V, (0, 2, 1, 3))
 
-        # Attention output will have shape:
-        # (batch_size, num_heads, seq_len, seq_len) *
-        # (batch_size, num_heads, seq_len, head_dim) =
-        # (batch_size, num_heads, seq_len, head_dim)
-        attention_output = jnp.dot(attention_weights, V)
+        # Compute scaled dot-product attention
+        attention_scores = jnp.einsum("bhqd, bhkd -> bhqk", Q, K) * self.scale
+        # (batch_size, num_heads, query_seq_len, key_seq_len)
+        attention_weights = nn.softmax(attention_scores, axis=-1)
 
-        # Restore shape to (batch_size, seq_len, num_heads, head_dim)
-        attention_output = jnp.permute_dims(attention_output, (0, 2, 1, 3))
+        # Compute attention output
+        attention_output = jnp.einsum("bhqk, bhvd -> bhqd", attention_weights,
+                                      V)
 
-        # Reshape output to (batch_size, seq_len, embed_dim)
-        attention_output = reshape(attention_output,
-                                   (batch_size, seq_len, self.embed_dim))
+        # Restore shape: (batch_size, query_seq_len, num_heads, head_dim)
+        attention_output = jnp.transpose(attention_output, (0, 2, 1, 3))
 
-        output = jnp.dot(attention_output, self.out)
-        return output
+        # Reshape back to (batch_size, query_seq_len, embed_dim)
+        attention_output = attention_output.reshape(batch_size, query_seq_len,
+                                                    self.embed_dim)
+
+        return self.out_proj(attention_output)
+
+
+class DecoderSACAFLAX(nn.Module):
+    embed_dim: int
+    num_heads: int
+    vocab_size: int
+
+    def setup(self):
+        # Token embedding layer
+        self.embedding = nn.Embed(self.vocab_size, self.embed_dim)
+
+        # Self-Attention (decoder attending to its own past tokens)
+        self.self_attention = MultiHeadAttentionFLAX(self.embed_dim,
+                                                     self.num_heads)
+
+        # Cross-Attention (queries from decoder, keys/values from encoder)
+        self.cross_attention = MultiHeadAttentionFLAX(self.embed_dim,
+                                                      self.num_heads)
+
+        # LSTM processes combined attention representations
+        self.lstm = nn.LSTMCell(self.embed_dim)
+
+        # Final projection to vocabulary size
+        self.fc_out = nn.Dense(self.vocab_size)
+
+    def __call__(self, target_token, encoder_outputs, hidden_state,
+                 cell_state):
+        """
+        Args:
+            target_token: (B, 1) Last generated token.
+            encoder_outputs: (B, S, H) Encoder outputs (keys & values for
+            cross-attention).
+            hidden_state: (B, H) Previous LSTM hidden state.
+            cell_state: (B, H) Previous LSTM cell state.
+
+        Returns:
+            next_token_logits: (B, 1, V) Predicted token logits for next step.
+            new_hidden: (B, H) Updated hidden state.
+            new_cell: (B, H) Updated cell state.
+        """
+
+        # 1. Embed the target token
+        embedded = self.embedding(target_token)  # (B, 1, E)
+
+        # 2. Apply Self-Attention (causal)
+        self_attn_output = self.self_attention(embedded, embedded, embedded)
+        # (B, 1, E)
+
+        # 3. Apply Cross-Attention (queries from Self-Attention Output,
+        # keys/values from encoder)
+        cross_attn_output = self.cross_attention(self_attn_output,
+                                                 encoder_outputs,
+                                                 encoder_outputs)  # (B, 1, E)
+
+        # 4. Concatenate embeddings and attention output
+        lstm_input = jnp.concatenate([embedded, cross_attn_output],
+                                     axis=-1)  # (B, 1, 2E)
+
+        # 5. LSTM step (JAX LSTMCell operates per timestep)
+        hidden_state, cell_state = self.lstm(hidden_state, cell_state,
+                                             lstm_input)
+
+        # 6. Predict next token
+        next_token_logits = self.fc_out(hidden_state)  # (B, 1, V)
+
+        return next_token_logits, hidden_state, cell_state
+
+
+class CrossAttentionModelFLAX(nn.Module):
+    enc_embed_dim: int
+    hidden_dim: int
+    vocab_size: int
+    num_heads: int
+    sos_token_id: int
+    bidirectional: bool = False
+    teacher_force_ratio: float = 0.5
+
+    def setup(self):
+        self.encoder = EncoderFLAX(self.vocab_size, self.enc_embed_dim,
+                                   self.hidden_dim, self.bidirectional)
+
+        hidden_dim = self.hidden_dim * 2 if self.bidirectional else \
+            self.hidden_dim
+        self.decoder = DecoderSACAFLAX(hidden_dim, self.num_heads,
+                                       self.vocab_size)
+
+    def __call__(self, inputs, targets=None):
+        """
+        Args:
+            inputs: (B, S) Input token indices.
+            targets: (B, T) Target token indices (optional, for teacher
+            forcing).
+            rng: PRNG key for random number generation.
+
+        Returns:
+            outputs: (B, T, V) Logits for each token position.
+        """
+
+        # Encode input sequence
+        encoder_outputs, decoder_hidden_state, decoder_cell_state = \
+            self.encoder(inputs)
+
+        batch_size, target_len, _ = encoder_outputs.shape
+        outputs = jnp.zeros((batch_size, target_len, self.vocab_size))
+
+        # Initial decoder input: <SOS> token
+        decoder_input = jnp.full((batch_size, 1), self.sos_token_id)
+
+        for t in range(target_len):
+
+            logits, decoder_hidden_state, decoder_cell_state = self.decoder(
+                decoder_input, encoder_outputs, decoder_hidden_state,
+                decoder_cell_state
+            )
+
+            outputs = outputs.at[:, t, :].set(logits)
+
+            # Decide whether to use teacher forcing
+            use_teacher_forcing = random.random() < \
+                self.teacher_force_ratio
+
+            if targets is not None and use_teacher_forcing:
+                decoder_input = targets[:, t:t+1]  # Use ground truth
+            else:
+                decoder_input = jnp.argmax(logits, axis=-1, keepdims=True)
+                # Use predicted token
+
+        return outputs

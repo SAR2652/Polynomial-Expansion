@@ -96,7 +96,9 @@ def create_bahdanau_attention_parameters(prng_key, hidden_dim, attention_dim,
     return params
 
 
-def create_decoder_parameters(prng_key, vocab_size, embed_dim, hidden_dim):
+def create_decoder_with_bahdanau_attention_parameters(
+        prng_key, vocab_size, embed_dim, hidden_dim
+    ):
 
     params = dict()
     k1, k2, k3, k4, k5 = random.split(prng_key, 5)
@@ -114,7 +116,7 @@ def create_decoder_parameters(prng_key, vocab_size, embed_dim, hidden_dim):
     params['W_fc'] = random.normal(k4, (hidden_dim, vocab_size))
     params['b_fc'] = random.normal(k5, (vocab_size,))
 
-    return params
+    return params    
 
 
 def get_arguments():

@@ -2,6 +2,7 @@ import os
 import jax      # type: ignore
 import optax    # type: ignore
 import argparse
+import functools
 import pandas as pd      # type: ignore
 from jax import random      # type: ignore
 import jax.numpy as jnp     # type: ignore
@@ -34,7 +35,7 @@ def get_training_arguments():
                         help='Number of Attention Heads',
                         type=int, default=4)
     parser.add_argument('--learning_rate',
-                        type=int,
+                        type=float,
                         help='Learning Rate at which the model is to be '
                         'trained', default=1e-4)
     parser.add_argument('--output_dir',
@@ -54,9 +55,20 @@ def get_training_arguments():
                         default='./output/tokenizer.joblib')
     parser.add_argument('--teacher_force_ratio',
                         type=float, default=0.5)
+    parser.add_argument('--bidirectional',
+                        type=bool, default=False,
+                        help='Use bidirectional model')
+    parser.add_argument('--continue_from_ckpt',
+                        action='store_true',
+                        help='Continue training from a checkpoint')
+    parser.add_argument('--ckpt_file',
+                        type=str, default='./output/checkpoint',
+                        help='Path to checkpoint file')
     return parser.parse_args()
 
 
+@functools.partial(jax.pmap,
+                   static_broadcasted_argnums=[i + 2 for i in range(3)])
 def init_train_state(model, random_key, batch_size, seq_len, learning_rate
                      ) -> train_state.TrainState:
 
@@ -77,9 +89,9 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
     )
 
 
-@jax.jit
-def train_step(state: train_state.TrainState, batch: jnp.ndarray):
-    inputs, targets = batch
+@jax.pmap
+def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
+               targets: jnp.ndarray):
 
     def loss_fn(params):
         logits = state.apply_fn({'params': params}, inputs)
@@ -88,7 +100,11 @@ def train_step(state: train_state.TrainState, batch: jnp.ndarray):
         return loss, logits
 
     gradient_fn = jax.value_and_grad(loss_fn, has_aux=True)
-    (loss, logits), grads = gradient_fn(state.params)
+    (loss, _), grads = gradient_fn(state.params)
+
+    grads = jax.lax.pmean(grads, axis_name="batch")
+    loss = jax.lax.pmean(loss, axis_name="batch")
+
     state = state.apply_gradients(grads=grads)
     return state, loss
 
@@ -110,9 +126,9 @@ def train_model(args):
     bidirectional = args.bidirectional
     continue_from_ckpt = args.continue_from_ckpt
     ckpt_file = args.ckpt_file
+    num_devices = jax.local_device_count()
 
     df = pd.read_csv(input_file)
-    df = df.iloc[:12800, :]
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
@@ -133,7 +149,8 @@ def train_model(args):
     dummy_targets = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
                              dtype=jnp.int32)
     params = model.init(prng_key, dummy_inputs, dummy_targets)
-    jax.tree_map(lambda x: x.shape, params)     # Check the parameters
+    param_shapes = jax.tree_map(lambda x: x.shape, params)
+    print(f"Model parameter shapes: {param_shapes}")
 
     state = init_train_state(model, prng_key, batch_size,
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
@@ -151,7 +168,17 @@ def train_model(args):
 
         running_loss = 0
         for i, batch in enumerate(train_dataloader):
-            state, loss = train_step(state, batch)
+
+            inputs, targets = batch
+            inputs = jnp.array(inputs, dtype=jnp.int32)
+            targets = jnp.array(targets, dtype=jnp.int32)
+
+            inputs = inputs.reshape(num_devices, -1,
+                                    tokenizer.MAX_SEQUENCE_LENGTH)
+            targets = targets.reshape(num_devices, -1,
+                                      tokenizer.MAX_SEQUENCE_LENGTH)
+
+            state, loss = train_step(state, inputs, targets)
             running_loss += loss
             if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
