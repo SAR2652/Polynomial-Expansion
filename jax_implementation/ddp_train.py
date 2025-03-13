@@ -103,7 +103,7 @@ def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
         print(targets.shape)
         loss = optax.softmax_cross_entropy_with_integer_labels(logits,
                                                                targets,
-                                                               axis=-1)
+                                                               )
         print(loss.shape)
         return loss.mean(), logits
 
