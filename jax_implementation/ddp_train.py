@@ -24,10 +24,10 @@ def get_training_arguments():
     parser.add_argument('--random_state',
                         help='Random state for weights initialization',
                         type=int, default=42)
-    parser.add_argument('--embed_size',
+    parser.add_argument('--embed_dim',
                         help='Size of embedding',
                         type=int, default=64)
-    parser.add_argument('--hidden_size',
+    parser.add_argument('--hidden_dim',
                         type=int,
                         help='Number of Neurons in Hidden Layers',
                         default=64)
@@ -114,8 +114,8 @@ def train_model(args):
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
     random_state = args.random_state
-    embed_size = args.embed_size
-    hidden_size = args.hidden_size
+    embed_size = args.embed_dim
+    hidden_size = args.hidden_dim
     num_heads = args.num_heads
     learning_rate = args.learning_rate
     epochs = args.epochs
