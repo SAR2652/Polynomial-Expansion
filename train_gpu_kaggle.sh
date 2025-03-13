@@ -16,6 +16,6 @@ python -m jax_implementation.ddp_train \
     --hidden_dim 64 \
     --embed_dim 64 \
     --epochs 2 \
-    --batch_size 768 \
+    --batch_size 1536 \
     --learning_rate 1e-4 \
     --bidirectional

@@ -192,7 +192,7 @@ def train_model(args):
             state, loss, grads = train_step(state, inputs, targets)
             state = update_model(state, grads)
 
-            running_loss += loss
+            running_loss += loss.item()
             if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
                       f'{running_loss:.4f}')
