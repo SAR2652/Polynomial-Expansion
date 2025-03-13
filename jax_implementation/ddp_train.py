@@ -8,6 +8,7 @@ from jax import random      # type: ignore
 import jax.numpy as jnp     # type: ignore
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader     # type: ignore
+from flax.jax_utils import replicate, unreplicate
 from flax.training import train_state, checkpoints
 from common_utils import load_tokenizer, collate_fn
 from jax_implementation.model import CrossAttentionModelFLAX
@@ -76,14 +77,14 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
                              dtype=jnp.int32)
 
     # Initialize the Model
-    variables = model.init(random_key, dummy_inputs, dummy_targets)
+    params = model.init(random_key, dummy_inputs, dummy_targets)['params']
     # Create the optimizer
     optimizer = optax.adam(learning_rate)
     # Create a State
     return train_state.TrainState.create(
         apply_fn=model.apply,
         tx=optimizer,
-        params=variables['params']
+        params=params
     )
 
 
@@ -160,6 +161,7 @@ def train_model(args):
 
     state = init_train_state(model, prng_key, batch_size,
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
+    state = replicate(state)
 
     if continue_from_ckpt and os.path.exists(ckpt_file):
         state = checkpoints.restore_checkpoint(ckpt_file, state)
@@ -200,8 +202,9 @@ def train_model(args):
 
         if avg_loss < min_loss:
             min_loss = avg_loss
-            checkpoints.save_checkpoint(output_dir, state, epoch + 1, name, 1,
-                                        overwrite=True)
+            temp_state = unreplicate(state)
+            checkpoints.save_checkpoint(output_dir, temp_state, epoch + 1,
+                                        name, 1, overwrite=True)
 
 
 def main():
