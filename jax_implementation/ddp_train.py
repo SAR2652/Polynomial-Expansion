@@ -125,6 +125,7 @@ def train_model(args):
     continue_from_ckpt = args.continue_from_ckpt
     ckpt_file = args.ckpt_file
     num_devices = jax.local_device_count()
+    print(f'Number of ')
 
     df = pd.read_csv(input_file)
 
@@ -175,6 +176,9 @@ def train_model(args):
                                     tokenizer.MAX_SEQUENCE_LENGTH)
             targets = targets.reshape(num_devices, -1,
                                       tokenizer.MAX_SEQUENCE_LENGTH)
+
+            print(inputs.shape)
+            print(targets.shape)
 
             state, loss = train_step(state, inputs, targets)
             running_loss += loss
