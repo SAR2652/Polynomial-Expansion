@@ -167,7 +167,7 @@ def train_model(args):
         running_loss = 0
         for i, batch in enumerate(train_dataloader):
 
-            inputs, targets = batch
+            inputs, targets, _, _ = batch
             inputs = jnp.array(inputs, dtype=jnp.int32)
             targets = jnp.array(targets, dtype=jnp.int32)
 
