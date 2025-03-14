@@ -269,8 +269,9 @@ class CrossAttentionModelFLAX(nn.Module):
                 decoder_input = targets[:, t:t+1]  # Use ground truth
             else:
                 print(logits.shape)
-                decoder_input = jnp.argmax(logits, axis=-1)
+                decoder_input = jnp.argmax(logits, axis=-1, keepdims=True)
                 print(decoder_input.shape)
+                exit(0)
                 # Use predicted token
 
         return outputs
