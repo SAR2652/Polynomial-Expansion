@@ -59,7 +59,7 @@ def batched_inference(args):
     key = jax.random.PRNGKey(args.random_state)
 
     df = pd.read_csv(input_filepath)
-    df = df.iloc[10:30, :]  # Using a subset of the data
+    df = df.iloc[10:12, :]  # Using a subset of the data
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
@@ -94,11 +94,15 @@ def batched_inference(args):
 
         # Model inference
         logits = model.apply({'params': params}, inputs)
+        print(f'Logits Shape = {logits.shape}')
 
         # Softmax and decoding
         probs = jax.nn.softmax(logits, axis=-1)
+        print(f'Probs Shape = {probs.shape}')
         best_guesses_gpu = jnp.argmax(probs, axis=-1)
+        print(f'Best Guesses Shape = {best_guesses_gpu.shape}')
         best_guesses_cpu = np.asarray(best_guesses_gpu)
+        print(f'Best Guesses = {best_guesses_cpu}')
 
         curr_expressions = tokenizer.batch_decode_expressions(best_guesses_cpu)
         expressions.extend(curr_expressions)
