@@ -13,7 +13,7 @@ def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_filepath',
                         help='CSV file containing validation data',
-                        type=str, default='./output/validation.csv')
+                        type=str, default='./validation.csv')
     parser.add_argument('--ckpt_dir',
                         help='Model checkpoint filepath',
                         type=str, default='./output/results/best_model_saca'
