@@ -1,5 +1,6 @@
 import jax
 import argparse
+import numpy as np
 import pandas as pd
 import jax.numpy as jnp
 from flax.training import checkpoints
@@ -96,9 +97,10 @@ def batched_inference(args):
 
         # Softmax and decoding
         probs = jax.nn.softmax(logits, axis=-1)
-        best_guesses = jnp.argmax(probs, axis=-1)
+        best_guesses_gpu = jnp.argmax(probs, axis=-1)
+        best_guesses_cpu = np.asarray(best_guesses_gpu)
 
-        curr_expressions = tokenizer.batch_decode_expressions(best_guesses)
+        curr_expressions = tokenizer.batch_decode_expressions(best_guesses_cpu)
         expressions.extend(curr_expressions)
 
     # Print predictions
