@@ -268,7 +268,7 @@ class CrossAttentionModelFLAX(nn.Module):
             if targets is not None and use_teacher_forcing:
                 decoder_input = targets[:, t:t+1]  # Use ground truth
             else:
-                decoder_input = jnp.argmax(logits, axis=-1, keepdims=True)
+                decoder_input = jnp.argmax(logits, axis=-1)
                 # Use predicted token
 
         return outputs
