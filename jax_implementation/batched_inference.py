@@ -1,197 +1,114 @@
-import os
-import joblib   # type: ignore
+import jax
 import argparse
-import numpy as np
-import pandas as pd     # type: ignore
-from jax import random      # type: ignore
-import jax.numpy as jnp     # type: ignore
+import pandas as pd
+import jax.numpy as jnp
+from flax.training import checkpoints
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
-from jax_implementation.model import create_model
 from common_utils import load_tokenizer, collate_fn
+from jax_implementation.model import CrossAttentionModelFLAX
 
 
 def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_filepath',
-                        type=str, help='Path to Input File',
-                        default='./output/validation.csv')
-    parser.add_argument('--random_state',
-                        help='Random state for weights initialization',
-                        type=int, default=42)
-    parser.add_argument('--embed_size',
-                        help='Size of embedding',
-                        type=int, default=128)
-    parser.add_argument('--hidden_size',
-                        type=int,
-                        help='Number of Neurons in Hidden Layers',
-                        default=128)
-    parser.add_argument('--output_dir',
-                        type=str,
-                        help='Directory to save output',
-                        default='./output')
+                        help='CSV file containing validation data',
+                        type=str, default='./output/validation.csv')
+    parser.add_argument('--ckpt_dir',
+                        help='Model checkpoint filepath',
+                        type=str, default='./output/results/best_model_saca'
+                        '_bidirect_217')
+    parser.add_argument('--embed_dim',
+                        help='Dimension of Embeddings',
+                        type=int, default=64)
+    parser.add_argument('--hidden_dim',
+                        help='Hidden layer dimensions',
+                        type=int, default=64)
     parser.add_argument('--batch_size',
-                        help='Batch size for model training',
-                        type=int, default=128)
+                        help='Batch size for inference',
+                        type=int, default=1)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
                         default='./output/tokenizer.joblib')
-    parser.add_argument('--encoder_filepath',
-                        help='File that cotains model encoder',
-                        type=str, default='./output/encoder_2.joblib')
-    parser.add_argument('--decoder_filepath',
-                        help='File that contains model decoder',
-                        type=str, default='./output/decoder_2.joblib')
+    parser.add_argument('--random_state',
+                        help='Random state for weights initialization',
+                        type=int, default=42)
+    parser.add_argument('--bidirectional',
+                        help='Enable bidirectional mode in LSTM',
+                        action='store_true')
+    parser.add_argument('--num_heads',
+                        help='Number of Attention Heads',
+                        type=int, default=4)
     return parser.parse_args()
 
 
-def load_model(encoder_filepath: str, decoder_filepath: str, model):
-
-    encoder_params = joblib.load(encoder_filepath)
-
-    model.encoder.embedding = encoder_params['embedding']
-    model.encoder.lstm.cell.U_f = encoder_params['lstm.cell.U_f']
-    model.encoder.lstm.cell.b1_f = encoder_params['lstm.cell.b1_f']
-    model.encoder.lstm.cell.W_f = encoder_params['lstm.cell.W_f']
-    model.encoder.lstm.cell.b2_f = encoder_params['lstm.cell.b2_f']
-    model.encoder.lstm.cell.U_g = encoder_params['lstm.cell.U_g']
-    model.encoder.lstm.cell.b1_g = encoder_params['lstm.cell.b1_g']
-    model.encoder.lstm.cell.W_g = encoder_params['lstm.cell.W_g']
-    model.encoder.lstm.cell.b2_g = encoder_params['lstm.cell.b2_g']
-    model.encoder.lstm.cell.U_i = encoder_params['lstm.cell.U_i']
-    model.encoder.lstm.cell.b1_i = encoder_params['lstm.cell.b1_i']
-    model.encoder.lstm.cell.W_i = encoder_params['lstm.cell.W_i']
-    model.encoder.lstm.cell.b2_i = encoder_params['lstm.cell.b2_i']
-    model.encoder.lstm.cell.U_o = encoder_params['lstm.cell.U_o']
-    model.encoder.lstm.cell.b1_o = encoder_params['lstm.cell.b1_o']
-    model.encoder.lstm.cell.W_o = encoder_params['lstm.cell.W_o']
-    model.encoder.lstm.cell.b2_o = encoder_params['lstm.cell.b2_o']
-
-    decoder_params = joblib.load(decoder_filepath)
-
-    model.decoder.embedding = decoder_params['embedding']
-    model.decoder.attention.W_h = decoder_params['attention.W_h']
-    model.decoder.attention.b_h = decoder_params['attention.b_h']
-    model.decoder.attention.W_c = decoder_params['attention.W_c']
-    model.decoder.attention.b_c = decoder_params['attention.b_c']
-    model.decoder.attention.V = decoder_params['attention.V']
-
-    model.decoder.lstm.U_f = decoder_params['lstm.U_f']
-    model.decoder.lstm.b1_f = decoder_params['lstm.b1_f']
-    model.decoder.lstm.W_f = decoder_params['lstm.W_f']
-    model.decoder.lstm.b2_f = decoder_params['lstm.b2_f']
-    model.decoder.lstm.U_g = decoder_params['lstm.U_g']
-    model.decoder.lstm.b1_g = decoder_params['lstm.b1_g']
-    model.decoder.lstm.W_g = decoder_params['lstm.W_g']
-    model.decoder.lstm.b2_g = decoder_params['lstm.b2_g']
-    model.decoder.lstm.U_i = decoder_params['lstm.U_i']
-    model.decoder.lstm.b1_i = decoder_params['lstm.b1_i']
-    model.decoder.lstm.W_i = decoder_params['lstm.W_i']
-    model.decoder.lstm.b2_i = decoder_params['lstm.b2_i']
-    model.decoder.lstm.U_o = decoder_params['lstm.U_o']
-    model.decoder.lstm.b1_o = decoder_params['lstm.b1_o']
-    model.decoder.lstm.W_o = decoder_params['lstm.W_o']
-    model.decoder.lstm.b2_o = decoder_params['lstm.b2_o']
-
-    model.decoder.W_fc = decoder_params['W_fc']
-    model.decoder.b_fc = decoder_params['b_fc']
-
-    return model
-
-
-def get_batched_predictions(batch, encoder, encoder_params, decoder,
-                            decoder_params, tokenizer, prng_key, expansions,
-                            teacher_force_ratio: float = 0.5):
-
-    input_ids = jnp.asarray(batch['input_ids'], dtype=jnp.int32)
-
-    decoder_hidden_state, decoder_cell_state, encoder_outputs = \
-        encoder(input_ids)
-
-    batch_size = input_ids.shape[0]
-
-    outputs = jnp.zeros((batch_size, target_len, tokenizer.vocab_size))
-
-    decoder_input = 
-
-    for t in range(1, target_len):
-
-        output, decoder_hidden_state, decoder_cell_state, _ = \
-            model.decoder(decoder_input, decoder_hidden_state,
-                          decoder_cell_state, encoder_outputs)
-
-        # Store output
-        outputs = outputs.at[t].set(output)
-
-        # Get the best guess
-        best_guess = jnp.argmax(output, axis=1)
-
-        # Decide whether to use teacher forcing
-        prng_key, subkey = random.split(prng_key)
-        use_teacher_force = random.uniform(subkey) < teacher_force_ratio
-
-        decoder_input = jnp.where(use_teacher_force, target_ids[:, t],
-                                  best_guess)
-
-    for output in outputs:
-        print(output)
-        expansions.append(
-            tokenizer.decode_expression(np.array(output))
-        )
-
-    return expansions
-
-
-def inference(args):
-
-    input_file = args.input_filepath
-    output_dir = args.output_dir
-    os.makedirs(output_dir, exist_ok=True)
-    random_state = args.random_state
-    embed_size = args.embed_size
-    hidden_size = args.hidden_size
+def batched_inference(args):
+    input_filepath = args.input_filepath
+    ckpt_dir = args.ckpt_dir
+    embed_dim = args.embed_dim
+    hidden_dim = args.hidden_dim
     batch_size = args.batch_size
-    encoder_filepath = args.encoder_filepath
-    decoder_filepath = args.decoder_filepath
     tokenizer_filepath = args.tokenizer_filepath
+    bidirectional = args.bidirectional
+    num_heads = args.num_heads
+
     tokenizer = load_tokenizer(tokenizer_filepath)
 
-    df = pd.read_csv(input_file)
-    df = df.iloc[:1024, :]
+    key = jax.random.PRNGKey(args.random_state)
+
+    df = pd.read_csv(input_filepath)
+    df = df.iloc[10:30, :]  # Using a subset of the data
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
 
-    val_dataset = PolynomialDataset(factors, expansions, tokenizer,
-                                    tokenizer.MAX_SEQUENCE_LENGTH, 'jax')
+    dataset = PolynomialDataset(factors, expansions, tokenizer)
+    dataloader = DataLoader(dataset, shuffle=False,
+                            batch_size=batch_size, collate_fn=collate_fn)
 
-    val_dataloader = DataLoader(val_dataset, shuffle=False,
-                                batch_size=batch_size, collate_fn=collate_fn)
+    # Initialize the Flax model
+    model = CrossAttentionModelFLAX(
+        embed_dim, hidden_dim, tokenizer.vocab_size, num_heads,
+        tokenizer.sos_token_id, bidirectional
+    )
 
-    prng_key = random.PRNGKey(random_state)
-    model = create_model(tokenizer.vocab_dict, embed_size, hidden_size,
-                         prng_key)
+    # Dummy input to initialize parameters
+    dummy_inputs = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
+                            dtype=jnp.int32)
 
-    model = load_model(encoder_filepath, decoder_filepath, model)
+    params = model.init(key, dummy_inputs)['params']
 
-    expansions = list()
+    # Restore checkpoint
+    state = checkpoints.restore_checkpoint(ckpt_dir, {'params': params})
+    params = state['params']
 
-    for i, batch in enumerate(val_dataloader):
+    expressions = []
 
-        expansions = get_batched_predictions(
-            batch, model, tokenizer, prng_key, expansions
-        )
+    for batch in dataloader:
+        inputs, targets, f, e = batch
 
-    factors = df['factors'].tolist()
+        inputs = jnp.array(inputs, dtype=jnp.int32)
+        targets = jnp.array(targets, dtype=jnp.int32)
 
-    for factor, expansion in list(zip(factors, expansions)):
-        print(f'{factor}={expansion}')
+        # Model inference
+        logits = model.apply({'params': params}, inputs)
+
+        # Softmax and decoding
+        probs = jax.nn.softmax(logits, axis=-1)
+        best_guesses = jnp.argmax(probs, axis=-1)
+
+        curr_expressions = tokenizer.batch_decode_expressions(best_guesses)
+        expressions.extend(curr_expressions)
+
+    # Print predictions
+    for i in range(len(expressions)):
+        print(f'{factors[i]}={expressions[i]}')
 
 
 def main():
     args = get_arguments()
-    inference(args)
+    batched_inference(args)
 
 
 if __name__ == '__main__':
