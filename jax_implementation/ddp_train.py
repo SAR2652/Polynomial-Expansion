@@ -142,6 +142,7 @@ def train_model(args):
     bidirectional = args.bidirectional
     ckpt_dir = os.path.join(args.ckpt_dir)
     os.makedirs(ckpt_dir, exist_ok=True)
+    ckpt_dir = os.path.abspath(ckpt_dir)
     num_devices = jax.local_device_count()
     print(f'Number of Devices = {num_devices}')
 
