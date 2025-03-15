@@ -84,10 +84,11 @@ def batched_inference(args):
     dummy_inputs = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
                             dtype=jnp.int32)
 
-    og_params = model.init(key, dummy_inputs)['params']
+    params = model.init(key, dummy_inputs)['params']
+    og_params = params.copy()
 
     # Restore checkpoint
-    state = checkpoints.restore_checkpoint(ckpt_dir, {'params': og_params})
+    state = checkpoints.restore_checkpoint(ckpt_dir, {'params': params})
     params = state['params']
 
     print(pytree_equal(og_params, params))
