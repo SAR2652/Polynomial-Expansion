@@ -264,7 +264,7 @@ class CrossAttentionModelFLAX(nn.Module):
             outputs = outputs.at[:, t, :].set(logits)
 
             # Decide whether to use teacher forcing
-            use_teacher_forcing = random.uniform() < \
+            use_teacher_forcing = random.uniform(0, 1) < \
                 self.teacher_force_ratio
 
             if targets is not None and use_teacher_forcing:
