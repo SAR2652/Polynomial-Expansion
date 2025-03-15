@@ -89,7 +89,7 @@ def batched_inference(args):
 
     # Restore checkpoint
     state = checkpoints.restore_checkpoint(ckpt_dir, {'params': params})
-    params = state.params
+    params = state['params']
 
     print(pytree_equal(og_params, params))
 

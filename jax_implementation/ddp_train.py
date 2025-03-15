@@ -6,10 +6,11 @@ import functools
 import pandas as pd      # type: ignore
 from jax import random      # type: ignore
 import jax.numpy as jnp     # type: ignore
+import orbax.checkpoint as ocp
+from flax.training import train_state
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader     # type: ignore
 from flax.jax_utils import replicate, unreplicate
-from flax.training import train_state, checkpoints
 from common_utils import load_tokenizer, collate_fn
 from jax_implementation.model import CrossAttentionModelFLAX
 
@@ -171,8 +172,14 @@ def train_model(args):
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
     state = replicate(state)
 
-    if continue_from_ckpt and os.path.exists(ckpt_file):
-        state = checkpoints.restore_checkpoint(ckpt_file, state)
+    checkpoint_manager = ocp.CheckpointManager(
+        checkpoint_dir,
+        ocp.PyTreeCheckpointHandler(),  # Ensures compatibility with TrainState
+        options=ocp.CheckpointManagerOptions(max_to_keep=3)  # Keep last 3 checkpoints
+    )
+
+    if continue_from_ckpt and os.path.exists(output_dir):
+        state = checkpoints.restore_checkpoint(ckpt_dir, state)
 
     name = 'best_model_saca'
     if bidirectional:
