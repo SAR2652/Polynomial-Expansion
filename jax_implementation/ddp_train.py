@@ -6,11 +6,10 @@ import functools
 import pandas as pd      # type: ignore
 from jax import random      # type: ignore
 import jax.numpy as jnp     # type: ignore
-import orbax.checkpoint as ocp
-from flax.training import train_state
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader     # type: ignore
 from flax.jax_utils import replicate, unreplicate
+from flax.training import train_state, checkpoints
 from common_utils import load_tokenizer, collate_fn
 from jax_implementation.model import CrossAttentionModelFLAX
 
@@ -172,14 +171,8 @@ def train_model(args):
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
     state = replicate(state)
 
-    checkpoint_manager = ocp.CheckpointManager(
-        checkpoint_dir,
-        ocp.PyTreeCheckpointHandler(),  # Ensures compatibility with TrainState
-        options=ocp.CheckpointManagerOptions(max_to_keep=3)  # Keep last 3 checkpoints
-    )
-
-    if continue_from_ckpt and os.path.exists(output_dir):
-        state = checkpoints.restore_checkpoint(ckpt_dir, state)
+    if continue_from_ckpt and os.path.exists(ckpt_file):
+        state = checkpoints.restore_checkpoint(ckpt_file, state)
 
     name = 'best_model_saca'
     if bidirectional:
@@ -218,11 +211,12 @@ def train_model(args):
         avg_loss = running_loss / len(train_dataset)
         print(f"Epoch {epoch + 1}, Loss: {avg_loss:.4f}")
 
-        if avg_loss < min_loss:
-            min_loss = avg_loss
-            temp_state = unreplicate(state)
-            checkpoints.save_checkpoint(output_dir, temp_state, epoch + 1,
-                                        name, 1, overwrite=True)
+        if jax.process_index == 0:
+            if avg_loss < min_loss:
+                min_loss = avg_loss
+                temp_state = unreplicate(state)
+                checkpoints.save_checkpoint(output_dir, temp_state, epoch + 1,
+                                            name, 1, overwrite=True)
 
 
 def main():
