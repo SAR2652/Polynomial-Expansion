@@ -6,12 +6,13 @@ import functools
 import pandas as pd      # type: ignore
 from jax import random      # type: ignore
 import jax.numpy as jnp     # type: ignore
+from flax.training import train_state
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader     # type: ignore
 from flax.jax_utils import replicate, unreplicate
-from flax.training import train_state, checkpoints
 from common_utils import load_tokenizer, collate_fn
 from jax_implementation.model import CrossAttentionModelFLAX
+from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 
 
 def get_training_arguments():
@@ -62,9 +63,9 @@ def get_training_arguments():
     parser.add_argument('--continue_from_ckpt',
                         action='store_true',
                         help='Continue training from a checkpoint')
-    parser.add_argument('--ckpt_file',
-                        type=str, default='./output/checkpoint',
-                        help='Path to checkpoint file')
+    parser.add_argument('--ckpt_dir',
+                        help='Directory containing checkpoints',
+                        type=str, default='checkpoints')
     return parser.parse_args()
 
 
@@ -138,8 +139,7 @@ def train_model(args):
     tokenizer = load_tokenizer(tokenizer_filepath)
     teacher_force_ratio = args.teacher_force_ratio
     bidirectional = args.bidirectional
-    continue_from_ckpt = args.continue_from_ckpt
-    ckpt_file = args.ckpt_file
+    ckpt_dir = os.path.join(args.ckpt_dir)
     num_devices = jax.local_device_count()
     print(f'Number of Devices = {num_devices}')
 
@@ -159,20 +159,15 @@ def train_model(args):
     )
 
     prng_key = random.PRNGKey(random_state)
-    dummy_inputs = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
-                            dtype=jnp.int32)
-    dummy_targets = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
-                             dtype=jnp.int32)
-    params = model.init(prng_key, dummy_inputs, dummy_targets)
-    param_shapes = jax.tree_map(lambda x: x.shape, params)
-    print(f"Model parameter shapes: {param_shapes}")
+    # param_shapes = jax.tree_map(lambda x: x.shape, params)
+    # print(f"Model parameter shapes: {param_shapes}")
 
     state = init_train_state(model, prng_key, batch_size,
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
     state = replicate(state)
 
-    if continue_from_ckpt and os.path.exists(ckpt_file):
-        state = checkpoints.restore_checkpoint(ckpt_file, state)
+    options = CheckpointManagerOptions(max_to_keep=2, create=True)
+    checkpoint_manager = CheckpointManager(ckpt_dir, options=options)
 
     name = 'best_model_saca'
     if bidirectional:
@@ -215,8 +210,7 @@ def train_model(args):
             if avg_loss < min_loss:
                 min_loss = avg_loss
                 temp_state = unreplicate(state)
-                checkpoints.save_checkpoint(output_dir, temp_state, epoch + 1,
-                                            name, 1, overwrite=True)
+                checkpoint_manager.save(epoch + 1, temp_state)
 
 
 def main():
