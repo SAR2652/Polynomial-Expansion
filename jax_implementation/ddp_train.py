@@ -206,7 +206,7 @@ def train_model(args):
         avg_loss = running_loss / len(train_dataset)
         print(f"Epoch {epoch + 1}, Loss: {avg_loss:.4f}")
 
-        if jax.process_index == 0:
+        if jax.process_index() == 0:
             if avg_loss < min_loss:
                 min_loss = avg_loss
                 temp_state = unreplicate(state)
