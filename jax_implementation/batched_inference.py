@@ -44,6 +44,12 @@ def get_arguments():
     return parser.parse_args()
 
 
+def pytree_equal(tree1, tree2):
+    """Check if two JAX Pytrees are structurally and element-wise equal."""
+    return jax.tree_util.tree_all(jax.tree_util.tree_map(
+        lambda x, y: jnp.array_equal(x, y), tree1, tree2))
+
+
 def batched_inference(args):
     input_filepath = args.input_filepath
     ckpt_dir = args.ckpt_dir
@@ -59,7 +65,7 @@ def batched_inference(args):
     key = jax.random.PRNGKey(args.random_state)
 
     df = pd.read_csv(input_filepath)
-    df = df.iloc[10:12, :]  # Using a subset of the data
+    df = df.iloc[10:15, :]  # Using a subset of the data
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
@@ -78,10 +84,10 @@ def batched_inference(args):
     dummy_inputs = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
                             dtype=jnp.int32)
 
-    params = model.init(key, dummy_inputs)['params']
+    model.init(key, dummy_inputs)['params']
 
     # Restore checkpoint
-    state = checkpoints.restore_checkpoint(ckpt_dir, {'params': params})
+    state = checkpoints.restore_checkpoint(ckpt_dir)
     params = state['params']
 
     expressions = []

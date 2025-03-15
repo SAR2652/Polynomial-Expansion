@@ -19,10 +19,10 @@ class EncoderFLAX(nn.Module):
         """ Forward pass of encoder """
         embeddings = self.embedding(inputs)
         # print(embeddings.shape)
-        batch_size, seq_len, embed_dim = embeddings.shape
+        batch_size, seq_len, _ = embeddings.shape
 
-        fwd_hidden = jnp.zeros((batch_size, embed_dim))
-        fwd_cell = jnp.zeros((batch_size, embed_dim))
+        fwd_hidden = jnp.zeros((batch_size, self.embed_dim))
+        fwd_cell = jnp.zeros((batch_size, self.embed_dim))
         bkwd_hidden = jnp.copy(fwd_hidden)
         bkwd_cell = jnp.copy(fwd_cell)
 
@@ -113,7 +113,8 @@ class MultiHeadAttentionFLAX(nn.Module):
         # Compute scaled dot-product attention
         attention_scores = jnp.einsum("bhqd, bhkd -> bhqk", Q, K) * self.scale
         # (batch_size, num_heads, query_seq_len, key_seq_len)
-        attention_weights = nn.softmax(attention_scores, axis=-1)
+        attention_weights = nn.softmax(attention_scores.astype(jnp.float32),
+                                       axis=-1)
 
         # Compute attention output
         attention_output = jnp.einsum("bhqk, bhvd -> bhqd", attention_weights,
@@ -199,7 +200,8 @@ class DecoderSACAFLAX(nn.Module):
 
         # 5. LSTM step (JAX LSTMCell operates per timestep)
         (hidden_state, cell_state), _ = self.lstm(
-            (hidden_state, cell_state), lstm_input[:, 0, :])
+            (hidden_state, cell_state), lstm_input[:, 0, :]
+        )
 
         # print(f'Out Hidden Shape = {hidden_state.shape}')
         # print(f'Out Shape = {out.shape}')
