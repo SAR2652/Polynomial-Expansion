@@ -6,10 +6,11 @@ import functools
 import pandas as pd      # type: ignore
 from jax import random      # type: ignore
 import jax.numpy as jnp     # type: ignore
-from flax.training import train_state
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader     # type: ignore
+from orbax.checkpoint import PyTreeCheckpointer
 from flax.jax_utils import replicate, unreplicate
+from flax.training import train_state, orbax_utils
 from common_utils import load_tokenizer, collate_fn
 from jax_implementation.model import CrossAttentionModelFLAX
 from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
@@ -167,8 +168,10 @@ def train_model(args):
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
     state = replicate(state)
 
+    orbax_checkpointer = PyTreeCheckpointer()
     options = CheckpointManagerOptions(max_to_keep=2, create=True)
-    checkpoint_manager = CheckpointManager(ckpt_dir, options=options)
+    checkpoint_manager = CheckpointManager(ckpt_dir, orbax_checkpointer,
+                                           options)
 
     name = 'best_model_saca'
     if bidirectional:
@@ -211,7 +214,12 @@ def train_model(args):
             if avg_loss < min_loss:
                 min_loss = avg_loss
                 temp_state = unreplicate(state)
-                checkpoint_manager.save(epoch + 1, {"train_state": temp_state})
+                ckpt = {'state': temp_state}
+                save_args = orbax_utils.save_args_from_target(ckpt)
+                checkpoint_manager.save(epoch + 1, ckpt,
+                                        save_kwargs={
+                                            'save_args': save_args
+                                        })
 
 
 def main():
