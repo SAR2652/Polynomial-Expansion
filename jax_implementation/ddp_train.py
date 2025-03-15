@@ -140,6 +140,7 @@ def train_model(args):
     teacher_force_ratio = args.teacher_force_ratio
     bidirectional = args.bidirectional
     ckpt_dir = os.path.join(args.ckpt_dir)
+    os.makedirs(ckpt_dir, exist_ok=True)
     num_devices = jax.local_device_count()
     print(f'Number of Devices = {num_devices}')
 
@@ -210,7 +211,7 @@ def train_model(args):
             if avg_loss < min_loss:
                 min_loss = avg_loss
                 temp_state = unreplicate(state)
-                checkpoint_manager.save(epoch + 1, temp_state)
+                checkpoint_manager.save(epoch + 1, {"train_state": temp_state})
 
 
 def main():
