@@ -86,7 +86,7 @@ def batched_inference(args):
     step = checkpoint_manager.latest_step()
     checkpoint = checkpoint_manager.restore(step)
     state = checkpoint['state']
-    params = state.params
+    params = state['params']
 
     expressions = []
 
