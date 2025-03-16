@@ -1,13 +1,14 @@
+import os
 import jax
 import argparse
 import numpy as np
 import pandas as pd
 import jax.numpy as jnp
-from flax.training import checkpoints
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from common_utils import load_tokenizer, collate_fn
 from jax_implementation.model import CrossAttentionModelFLAX
+from orbax.checkpoint import PyTreeCheckpointer, CheckpointManager
 
 
 def get_arguments():
@@ -44,15 +45,9 @@ def get_arguments():
     return parser.parse_args()
 
 
-def pytree_equal(tree1, tree2):
-    """Check if two JAX Pytrees are structurally and element-wise equal."""
-    return jax.tree_util.tree_all(jax.tree_util.tree_map(
-        lambda x, y: jnp.array_equal(x, y), tree1, tree2))
-
-
 def batched_inference(args):
     input_filepath = args.input_filepath
-    ckpt_dir = args.ckpt_dir
+    ckpt_dir = os.path.abspath(args.ckpt_dir)
     embed_dim = args.embed_dim
     hidden_dim = args.hidden_dim
     batch_size = args.batch_size
@@ -62,7 +57,7 @@ def batched_inference(args):
 
     tokenizer = load_tokenizer(tokenizer_filepath)
 
-    key = jax.random.PRNGKey(args.random_state)
+    # key = jax.random.PRNGKey(args.random_state)
 
     df = pd.read_csv(input_filepath)
     df = df.iloc[10:15, :]  # Using a subset of the data
@@ -81,14 +76,17 @@ def batched_inference(args):
     )
 
     # Dummy input to initialize parameters
-    dummy_inputs = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
-                            dtype=jnp.int32)
+    # dummy_inputs = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
+    #                         dtype=jnp.int32)
 
-    model.init(key, dummy_inputs)['params']
+    # model.init(key, dummy_inputs)
 
-    # Restore checkpoint
-    state = checkpoints.restore_checkpoint(ckpt_dir, target=None)
-    params = state['params']
+    orbax_checkpointer = PyTreeCheckpointer()
+    checkpoint_manager = CheckpointManager(ckpt_dir, orbax_checkpointer)
+    step = checkpoint_manager.latest_step()
+    checkpoint = checkpoint_manager.restore(step)
+    state = checkpoint['state']
+    params = state.params
 
     expressions = []
 

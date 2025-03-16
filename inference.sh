@@ -5,4 +5,4 @@ python -m jax_implementation.batched_inference \
     --hidden_dim 64 \
     --embed_dim 64 \
     --bidirectional \
-    --ckpt_dir ./best_model_saca_bidirect_217
+    --ckpt_dir ./checkpoints
