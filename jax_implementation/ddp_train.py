@@ -167,6 +167,7 @@ def train_model(args):
 
     state = init_train_state(model, prng_key, batch_size,
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
+    # replicate model state on all available GPUs
     state = replicate(state)
 
     orbax_checkpointer = PyTreeCheckpointer()
@@ -194,15 +195,11 @@ def train_model(args):
             targets = targets.reshape(num_devices, -1,
                                       tokenizer.MAX_SEQUENCE_LENGTH)
 
-            # print(f'Inputs Shape = {inputs.shape}')
-            # print(f'Targets Shape = {targets.shape}')
-
+            # Perform model training in parallel and update model state on all
+            # GPUs
             state, loss, grads = train_step(state, inputs, targets)
             state = update_model(state, grads)
 
-            # print(f'Batch Loss = {loss}')
-            # print(f'Batch Loss Shape = {loss.shape}')
-            # Loss Shape = (num_devices,) and will have one value due to pmean
             running_loss += loss.mean().item()
             if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
@@ -211,6 +208,7 @@ def train_model(args):
         avg_loss = running_loss / len(train_dataset)
         print(f"Epoch {epoch + 1}, Loss: {avg_loss:.4f}")
 
+        # save model state on only one GPU
         if jax.process_index() == 0:
             if avg_loss < min_loss:
                 min_loss = avg_loss

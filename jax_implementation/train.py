@@ -112,7 +112,7 @@ def train_model(args):
     ckpt_file = args.ckpt_file
 
     df = pd.read_csv(input_file)
-    df = df.iloc[:12800, :]
+    # df = df.iloc[:12800, :]
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()

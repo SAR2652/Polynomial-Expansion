@@ -75,12 +75,6 @@ def batched_inference(args):
         tokenizer.sos_token_id, bidirectional
     )
 
-    # Dummy input to initialize parameters
-    # dummy_inputs = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
-    #                         dtype=jnp.int32)
-
-    # model.init(key, dummy_inputs)
-
     orbax_checkpointer = PyTreeCheckpointer()
     checkpoint_manager = CheckpointManager(ckpt_dir, orbax_checkpointer)
     step = checkpoint_manager.latest_step()
@@ -98,15 +92,15 @@ def batched_inference(args):
 
         # Model inference
         logits = model.apply({'params': params}, inputs)
-        print(f'Logits Shape = {logits.shape}')
+        # print(f'Logits Shape = {logits.shape}')
 
         # Softmax and decoding
         probs = jax.nn.softmax(logits, axis=-1)
-        print(f'Probs Shape = {probs.shape}')
+        # print(f'Probs Shape = {probs.shape}')
         best_guesses_gpu = jnp.argmax(probs, axis=-1)
-        print(f'Best Guesses Shape = {best_guesses_gpu.shape}')
+        # print(f'Best Guesses Shape = {best_guesses_gpu.shape}')
         best_guesses_cpu = np.asarray(best_guesses_gpu)
-        print(f'Best Guesses = {best_guesses_cpu}')
+        # print(f'Best Guesses = {best_guesses_cpu}')
 
         curr_expressions = tokenizer.batch_decode_expressions(best_guesses_cpu)
         expressions.extend(curr_expressions)
