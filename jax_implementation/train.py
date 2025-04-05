@@ -7,9 +7,11 @@ from jax import random      # type: ignore
 import jax.numpy as jnp     # type: ignore
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader     # type: ignore
-from flax.training import train_state, checkpoints
+from orbax.checkpoint import PyTreeCheckpointer
+from flax.training import train_state, orbax_utils
 from common_utils import load_tokenizer, collate_fn
 from jax_implementation.model import CrossAttentionModelFLAX
+from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 
 
 def get_training_arguments():
@@ -54,6 +56,9 @@ def get_training_arguments():
                         default='./output/tokenizer.joblib')
     parser.add_argument('--teacher_force_ratio',
                         type=float, default=0.5)
+    parser.add_argument('--ckpt_dir',
+                        help='Directory containing checkpoints',
+                        type=str, default='checkpoints')
     return parser.parse_args()
 
 
@@ -85,6 +90,7 @@ def train_step(state: train_state.TrainState, batch: jnp.ndarray):
         logits = state.apply_fn({'params': params}, inputs)
         loss = optax.softmax_cross_entropy_with_integer_labels(logits,
                                                                targets)
+        loss = loss.mean()
         return loss, logits
 
     gradient_fn = jax.value_and_grad(loss_fn, has_aux=True)
@@ -108,8 +114,9 @@ def train_model(args):
     tokenizer = load_tokenizer(tokenizer_filepath)
     teacher_force_ratio = args.teacher_force_ratio
     bidirectional = args.bidirectional
-    continue_from_ckpt = args.continue_from_ckpt
-    ckpt_file = args.ckpt_file
+    ckpt_dir = os.path.join(args.ckpt_dir)
+    os.makedirs(ckpt_dir, exist_ok=True)
+    ckpt_dir = os.path.abspath(ckpt_dir)
 
     df = pd.read_csv(input_file)
     # df = df.iloc[:12800, :]
@@ -128,18 +135,20 @@ def train_model(args):
     )
 
     prng_key = random.PRNGKey(random_state)
-    dummy_inputs = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
-                            dtype=jnp.int32)
-    dummy_targets = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
-                             dtype=jnp.int32)
-    params = model.init(prng_key, dummy_inputs, dummy_targets)
-    jax.tree_map(lambda x: x.shape, params)     # Check the parameters
+    # dummy_inputs = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
+    #                         dtype=jnp.int32)
+    # dummy_targets = jnp.ones((batch_size, tokenizer.MAX_SEQUENCE_LENGTH),
+    #                          dtype=jnp.int32)
+    # params = model.init(prng_key, dummy_inputs, dummy_targets)
+    # jax.tree_map(lambda x: x.shape, params)     # Check the parameters
 
     state = init_train_state(model, prng_key, batch_size,
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
 
-    if continue_from_ckpt and os.path.exists(ckpt_file):
-        state = checkpoints.restore_checkpoint(ckpt_file, state)
+    orbax_checkpointer = PyTreeCheckpointer()
+    options = CheckpointManagerOptions(max_to_keep=2, create=True)
+    checkpoint_manager = CheckpointManager(ckpt_dir, orbax_checkpointer,
+                                           options)
 
     name = 'best_model_saca'
     if bidirectional:
@@ -162,8 +171,12 @@ def train_model(args):
 
         if avg_loss < min_loss:
             min_loss = avg_loss
-            checkpoints.save_checkpoint(output_dir, state, epoch + 1, name, 1,
-                                        overwrite=True)
+            ckpt = {'state': state}
+            save_args = orbax_utils.save_args_from_target(ckpt)
+            checkpoint_manager.save(epoch + 1, ckpt,
+                                    save_kwargs={
+                                        'save_args': save_args
+                                    })
 
 
 def main():
