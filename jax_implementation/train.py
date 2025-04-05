@@ -84,7 +84,9 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
 
 @jax.jit
 def train_step(state: train_state.TrainState, batch: jnp.ndarray):
-    inputs, targets = batch
+    inputs, targets, _, _ = batch
+    inputs = jnp.array(inputs, dtype=jnp.int32)
+    targets = jnp.array(targets, dtype=jnp.int32)
 
     def loss_fn(params):
         logits = state.apply_fn({'params': params}, inputs)
