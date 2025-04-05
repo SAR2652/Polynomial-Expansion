@@ -56,6 +56,9 @@ def get_training_arguments():
     parser.add_argument('--ckpt_dir',
                         help='Directory containing checkpoints',
                         type=str, default='checkpoints')
+    parser.add_argument('--bidirectional',
+                        help='Activate Bidirectionla LSTM in encoder',
+                        action='store_true')
     return parser.parse_args()
 
 
