@@ -83,10 +83,8 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
 
 
 @jax.jit
-def train_step(state: train_state.TrainState, batch: tuple):
-    inputs, targets, _, _ = batch
-    inputs = jnp.array(inputs, dtype=jnp.int32)
-    targets = jnp.array(targets, dtype=jnp.int32)
+def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
+               targets: jnp.ndarray):
 
     def loss_fn(params):
         logits = state.apply_fn({'params': params}, inputs)
@@ -162,7 +160,10 @@ def train_model(args):
 
         running_loss = 0
         for i, batch in enumerate(train_dataloader):
-            state, loss = train_step(state, batch)
+            inputs, targets, _, _ = batch
+            inputs = jnp.array(inputs, dtype=jnp.int32)
+            targets = jnp.array(targets, dtype=jnp.int32)
+            state, loss = train_step(state, inputs, targets)
             running_loss += loss
             if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
