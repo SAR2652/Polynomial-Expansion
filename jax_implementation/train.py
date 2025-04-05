@@ -36,7 +36,7 @@ def get_training_arguments():
                         help='Number of Attention Heads',
                         type=int, default=4)
     parser.add_argument('--learning_rate',
-                        type=int,
+                        type=float,
                         help='Learning Rate at which the model is to be '
                         'trained', default=1e-4)
     parser.add_argument('--output_dir',
