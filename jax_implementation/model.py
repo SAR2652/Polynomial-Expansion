@@ -112,6 +112,7 @@ class MultiHeadAttentionFLAX(nn.Module):
 
         # Compute scaled dot-product attention
         attention_scores = jnp.einsum("bhqd, bhkd -> bhqk", Q, K) * self.scale
+
         # (batch_size, num_heads, query_seq_len, key_seq_len)
         attention_weights = nn.softmax(attention_scores.astype(jnp.float32),
                                        axis=-1)

@@ -20,7 +20,6 @@ def print_param_dtypes(params):
 
 def display_params(args):
 
-    jax.default_device("cpu")
     ckpt_dir = os.path.abspath(args.ckpt_dir)
     orbax_checkpointer = PyTreeCheckpointer()
     checkpoint_manager = CheckpointManager(ckpt_dir, orbax_checkpointer)
