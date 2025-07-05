@@ -42,6 +42,12 @@ def get_arguments():
     parser.add_argument('--num_heads',
                         help='Number of Attention Heads',
                         type=int, default=4)
+    parser.add_argument('--teacher_force_ratio',
+                        helkp='Teacher force ratio',
+                        type=float, default=0.5)
+    parser.add_argument('--use_cache',
+                        help='Use KV Caching',
+                        action='store_true')
     return parser.parse_args()
 
 
@@ -54,13 +60,15 @@ def batched_inference(args):
     tokenizer_filepath = args.tokenizer_filepath
     bidirectional = args.bidirectional
     num_heads = args.num_heads
+    teacher_force_ratio = args.teacher_force_ratio
+    use_cache = args.use_cache
 
     tokenizer = load_tokenizer(tokenizer_filepath)
 
     # key = jax.random.PRNGKey(args.random_state)
 
     df = pd.read_csv(input_filepath)
-    df = df.iloc[10:15, :]  # Using a subset of the data
+    # df = df.iloc[10:15, :]  # Using a subset of the data
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
@@ -72,7 +80,7 @@ def batched_inference(args):
     # Initialize the Flax model
     model = CrossAttentionModelFLAX(
         embed_dim, hidden_dim, tokenizer.vocab_size, num_heads,
-        tokenizer.sos_token_id, bidirectional
+        tokenizer.sos_token_id, bidirectional, teacher_force_ratio, use_cache
     )
 
     orbax_checkpointer = PyTreeCheckpointer()
@@ -96,8 +104,10 @@ def batched_inference(args):
 
         # Softmax and decoding
         probs = jax.nn.softmax(logits, axis=-1)
+
         # print(f'Probs Shape = {probs.shape}')
         best_guesses_gpu = jnp.argmax(probs, axis=-1)
+
         # print(f'Best Guesses Shape = {best_guesses_gpu.shape}')
         best_guesses_cpu = np.asarray(best_guesses_gpu)
         # print(f'Best Guesses = {best_guesses_cpu}')

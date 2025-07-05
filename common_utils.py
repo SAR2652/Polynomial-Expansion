@@ -2,6 +2,7 @@ import joblib   # type: ignore
 import pickle
 import numpy as np
 from typing import Tuple, Iterable
+from sympy import simplify, sympify
 
 
 def load_file(file_path: str) -> Tuple[Tuple[str], Tuple[str]]:
@@ -55,20 +56,25 @@ class Tokenizer:
         input_ids = [self.vocab_dict[token] for token in tokens]
         return input_ids
 
-    def encode(self, factor, expansion):
+    def encode(self, factor, expansion=None):
         """Tokenize a single factor and its corresponding expansion and
         append EOS token"""
         factor_input_ids = self.convert_tokens_to_ids(factor)
-        expansion_label_ids = self.convert_tokens_to_ids(expansion)
         factor_input_ids.append(self.eos_token_id)
-        expansion_label_ids.append(self.eos_token_id)
         factor_padding_length = self.MAX_SEQUENCE_LENGTH - \
             len(factor_input_ids)
-        expansion_padding_length = self.MAX_SEQUENCE_LENGTH - \
-            len(expansion_label_ids)
         factor_input_ids.extend([self.pad_token_id] * factor_padding_length)
-        expansion_label_ids.extend([self.pad_token_id] *
-                                   expansion_padding_length)
+
+        if expansion is not None:
+            expansion_label_ids = self.convert_tokens_to_ids(expansion)
+            expansion_label_ids.append(self.eos_token_id)
+            expansion_padding_length = self.MAX_SEQUENCE_LENGTH - \
+                len(expansion_label_ids)
+
+            expansion_label_ids.extend([self.pad_token_id] *
+                                       expansion_padding_length)
+        else:
+            expansion_label_ids = None
         return factor_input_ids, expansion_label_ids
 
     def encode_expression(self, expression):
@@ -131,11 +137,42 @@ def score(true_expansion: str, pred_expansion: str) -> int:
 def collate_fn(batch):
     # Batch shape: (seq_len, batch_size) -> (batch_size, seq_len)
     input_ids = [item["input_ids"] for item in batch]
+    factors = [item["factor"] for item in batch]
     target_ids = [item["target_ids"] for item in batch]
-    factors = [item['factor'] for item in batch]
-    expansions = [item['expansion'] for item in batch]
+    expansions = [item["expansion"] for item in batch]
+
+    target_flag = False
+    if not all(x is None for x in target_ids):
+        target_flag = True
+
     # print(input_ids)
     # print(target_ids)
 
     return np.stack(input_ids).transpose(0, 1), \
-        np.stack(target_ids).transpose(0, 1), factors, expansions
+        np.stack(target_ids).transpose(0, 1) if target_flag else target_ids, \
+        factors, expansions
+
+
+def is_equivalent(expr1, expr2):
+    try:
+        return simplify(sympify(expr1) - sympify(expr2)) == 0
+    except Exception:
+        return False
+
+
+def compute_equivalence_accuracy(preds, targets):
+    """
+    Compute percentage of symbolic equivalence between predicted and target
+    expressions.
+
+    Args:
+        preds (list of str): Predicted expressions
+        targets (list of str): Ground truth expressions
+
+    Returns:
+        float: Percentage of correct predictions
+    """
+    assert len(preds) == len(targets), "Prediction and target lists must have"
+    "same length"
+    correct = sum(is_equivalent(p, t) for p, t in zip(preds, targets))
+    return 100.0 * correct / len(preds)

@@ -1,19 +1,21 @@
 import os
-import jax      # type: ignore
-import optax    # type: ignore
+import jax
+import optax
 import argparse
-import functools
-import pandas as pd      # type: ignore
-from jax import random      # type: ignore
-import jax.numpy as jnp     # type: ignore
+import pandas as pd
+from jax import random
+import jax.numpy as jnp
+from typing import Tuple
 from dataset import PolynomialDataset
-from torch.utils.data import DataLoader     # type: ignore
+from torch.utils.data import DataLoader
 from orbax.checkpoint import PyTreeCheckpointer
 from flax.jax_utils import replicate, unreplicate
 from flax.training import train_state, orbax_utils
-from common_utils import load_tokenizer, collate_fn
 from jax_implementation.model import CrossAttentionModelFLAX
+from jax_implementation.utils import eval_step, train_epoch_or_evaluate
 from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
+from common_utils import compute_equivalence_accuracy, load_tokenizer, \
+    collate_fn
 
 
 def get_training_arguments():
@@ -67,7 +69,56 @@ def get_training_arguments():
     parser.add_argument('--ckpt_dir',
                         help='Directory containing checkpoints',
                         type=str, default='checkpoints')
+    parser.add_argument('--use_cache',
+                        help='Use KV caching during model training/inference',
+                        action='store_true')
+    parser.add_argument('--ddp',
+                        help='Activate Distributed Data Parallel',
+                        action='store_true')
     return parser.parse_args()
+
+
+def apply_gradient_update(state, grads):
+    return state.apply_gradients(grads=grads)
+
+
+def create_train_step_fn(ddp: bool = False):
+    """
+    Returns a unified training step function.
+
+    Args:
+        ddp (bool): If True, performs DDP-style training using `jax.pmap`.
+
+    Returns:
+        train_step: (state, inputs, targets) -> (state, loss, grads)
+    """
+
+    def train_step(
+        state: train_state.TrainState,
+        inputs: jnp.ndarray,
+        targets: jnp.ndarray
+    ) -> Tuple[train_state.TrainState, jnp.ndarray, dict]:
+
+        def loss_fn(params):
+            logits = state.apply_fn({'params': params}, inputs)
+            loss = optax.softmax_cross_entropy_with_integer_labels(logits,
+                                                                   targets)
+            return loss.mean(), logits
+
+        (loss, logits), grads = jax.value_and_grad(loss_fn,
+                                                   has_aux=True)(state.params)
+
+        if ddp:
+            loss = jax.lax.pmean(loss, axis_name='num_devices')
+            grads = jax.lax.pmean(grads, axis_name='num_devices')
+
+        # Note: We return grads separately, letting the user decide when to
+        # apply
+        return state, loss, grads
+
+    # Compile for performance
+    return jax.pmap(train_step, axis_name='num_devices') if ddp else \
+        jax.jit(train_step)
 
 
 def init_train_state(model, random_key, batch_size, seq_len, learning_rate
@@ -79,54 +130,19 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
                              dtype=jnp.int32)
 
     # Initialize the Model
-    params = model.init(random_key, dummy_inputs, dummy_targets)['params']
+    variables = model.init(random_key, dummy_inputs, dummy_targets)
     # Create the optimizer
     optimizer = optax.adam(learning_rate)
     # Create a State
     return train_state.TrainState.create(
         apply_fn=model.apply,
         tx=optimizer,
-        params=params
+        params=variables['params']
     )
 
 
-@jax.pmap
-def update_model(state, grads):
-    return state.apply_gradients(grads=grads)
-
-
-@functools.partial(jax.pmap, axis_name='num_devices')
-def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
-               targets: jnp.ndarray):
-
-    # print(f'Targets Shape before = {targets.shape}')
-    # targets = targets.reshape(targets.shape[0], -1)
-    # print(f'Targets Shape after = {targets.shape}')
-
-    def loss_fn(params):
-        logits = state.apply_fn({'params': params}, inputs)
-        # print(f'Logits Shape before = {logits.shape}')
-        # logits = logits.reshape(logits.shape[0], -1, logits.shape[-1])
-        # print(f'Logits Shape after = {logits.shape}')
-        loss = optax.softmax_cross_entropy_with_integer_labels(logits,
-                                                               targets)
-        # print(f'Process Loss = {loss.shape}')
-        loss = loss.mean()
-        # print(f'Process Mean Loss = {loss.shape}')
-        return loss, logits
-
-    gradient_fn = jax.value_and_grad(loss_fn, has_aux=True)
-    (loss, _), grads = gradient_fn(state.params)
-
-    # ensures same loss and gradients across all devices
-    loss = jax.lax.pmean(loss, axis_name='num_devices')
-    grads = jax.lax.pmean(grads, axis_name='num_devices')
-
-    return state, loss, grads
-
-
 def train_model(args):
-    input_file = args.input_filepath
+    input_dir = args.input_dir
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
     random_state = args.random_state
@@ -138,27 +154,42 @@ def train_model(args):
     batch_size = args.batch_size
     tokenizer_filepath = args.tokenizer_filepath
     tokenizer = load_tokenizer(tokenizer_filepath)
-    teacher_force_ratio = args.teacher_force_ratio
     bidirectional = args.bidirectional
     ckpt_dir = os.path.join(args.ckpt_dir)
     os.makedirs(ckpt_dir, exist_ok=True)
     ckpt_dir = os.path.abspath(ckpt_dir)
+    use_cache = args.use_cache
+    ddp = args.ddp
     num_devices = jax.local_device_count()
     print(f'Number of Devices = {num_devices}')
 
-    df = pd.read_csv(input_file)
+    train_path = os.path.join(input_dir, 'training.csv')
+    val_path = os.path.join(input_dir, 'validation.csv')
+    test_path = os.path.join(input_dir, 'test.csv')
 
-    factors = df['factor'].tolist()
-    expansions = df['expansion'].tolist()
+    train_df = pd.read_csv(train_path)
+    val_df = pd.read_csv(val_path)
 
-    train_dataset = PolynomialDataset(factors, expansions, tokenizer)
+    # df = df.iloc[:12800, :]
+
+    train_factors = train_df['factor'].tolist()
+    train_expansions = train_df['expansion'].tolist()
+    val_factors = val_df['factor'].tolist()
+    val_expansions = val_df['expansion'].tolist()
+
+    train_dataset = PolynomialDataset(train_factors, train_expansions,
+                                      tokenizer)
+    val_dataset = PolynomialDataset(val_factors, val_expansions,
+                                    tokenizer)
 
     train_dataloader = DataLoader(train_dataset, shuffle=True,
                                   batch_size=batch_size, collate_fn=collate_fn)
+    val_dataloader = DataLoader(val_dataset, shuffle=True,
+                                batch_size=batch_size, collate_fn=collate_fn)
 
     model = CrossAttentionModelFLAX(
         embed_size, hidden_size, tokenizer.vocab_size, num_heads,
-        tokenizer.sos_token_id, bidirectional, teacher_force_ratio
+        tokenizer.sos_token_id, bidirectional, use_cache
     )
 
     prng_key = random.PRNGKey(random_state)
@@ -167,9 +198,11 @@ def train_model(args):
 
     state = init_train_state(model, prng_key, batch_size,
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
-    # replicate model state on all available GPUs
-    state = replicate(state)
 
+    if ddp:     # replicate model state on all available GPUs
+        state = replicate(state)
+
+    # Initialize model checkpointing requirements
     orbax_checkpointer = PyTreeCheckpointer()
     options = CheckpointManagerOptions(max_to_keep=2, create=True)
     checkpoint_manager = CheckpointManager(ckpt_dir, orbax_checkpointer,
@@ -180,45 +213,73 @@ def train_model(args):
         name += '_bidirect'
     name += '_'
 
-    min_loss = float('inf')
+    # initialize model training/evaluation and update functions
+    train_step = create_train_step_fn(ddp)
+    if ddp:
+        update_model = jax.pmap(apply_gradient_update)
+    else:
+        update_model = apply_gradient_update
+
+    best_val_acc = float('-inf')
     for epoch in range(epochs):
 
-        running_loss = 0
-        for i, batch in enumerate(train_dataloader):
-
-            inputs, targets, _, _ = batch
-            inputs = jnp.array(inputs, dtype=jnp.int32)
-            targets = jnp.array(targets, dtype=jnp.int32)
-
-            inputs = inputs.reshape(num_devices, -1,
-                                    tokenizer.MAX_SEQUENCE_LENGTH)
-            targets = targets.reshape(num_devices, -1,
-                                      tokenizer.MAX_SEQUENCE_LENGTH)
-
-            # Perform model training in parallel and update model state on all
-            # GPUs
-            state, loss, grads = train_step(state, inputs, targets)
-            state = update_model(state, grads)
-
-            running_loss += loss.mean().item()
-            if (i + 1) % (len(train_dataloader) // 100) == 0:
-                print(f'Running Loss after {i + 1} batches = '
-                      f'{running_loss:.4f}')
+        state, running_loss = train_epoch_or_evaluate(
+            state, train_dataloader, tokenizer, ddp, train_step,
+            update_model, num_devices
+        )
 
         avg_loss = running_loss / len(train_dataset)
-        print(f"Epoch {epoch + 1}, Loss: {avg_loss:.4f}")
+
+        val_preds, _, val_gt = train_epoch_or_evaluate(
+            (model, state['params']), val_dataloader, tokenizer, ddp,
+            eval_step, None, num_devices, "eval",
+            tokenizer.MAX_SEQUENCE_LENGTH, tokenizer.vocab_size
+        )
+
+        val_expansions = tokenizer.batch_decode_expressions(val_preds)
+        val_acc = compute_equivalence_accuracy(val_expansions, val_gt)
+
+        print(f"Epoch {epoch + 1}: Avg Training Loss = {avg_loss:.4f}, "
+              f"Validation Accuracy = {val_acc:.2f}%")
 
         # save model state on only one GPU
-        if jax.process_index() == 0:
-            if avg_loss < min_loss:
-                min_loss = avg_loss
-                temp_state = unreplicate(state)
-                ckpt = {'state': temp_state}
-                save_args = orbax_utils.save_args_from_target(ckpt)
-                checkpoint_manager.save(epoch + 1, ckpt,
-                                        save_kwargs={
-                                            'save_args': save_args
-                                        })
+        if val_acc > best_val_acc and \
+                (not ddp or (ddp and jax.process_index() == 0)):
+            temp_state = unreplicate(state)
+            ckpt = {'state': temp_state}
+            save_args = orbax_utils.save_args_from_target(ckpt)
+            checkpoint_manager.save(epoch + 1, ckpt,
+                                    save_kwargs={
+                                        'save_args': save_args
+                                    })
+
+    # load best performing checkpoint
+    step = checkpoint_manager.latest_step()
+    checkpoint = checkpoint_manager.restore(step)
+    state = checkpoint['state']
+    params = state['params']
+
+    # load and evaluate test set
+    test_df = pd.read_csv(test_path)
+
+    test_factors = test_df['factor'].tolist()
+    test_expansions = test_df['expansion'].tolist()
+
+    test_dataset = PolynomialDataset(test_factors, test_expansions,
+                                     tokenizer)
+    test_dataloader = DataLoader(test_dataset, shuffle=True,
+                                 batch_size=batch_size, collate_fn=collate_fn)
+
+    test_preds, _, test_gt = train_epoch_or_evaluate(
+        (model, params), test_dataloader, tokenizer, ddp,
+        eval_step, None, num_devices, "eval", tokenizer.MAX_SEQUENCE_LENGTH,
+        tokenizer.vocab_size
+    )
+
+    test_expansions = tokenizer.batch_decode_expressions(test_preds)
+    test_acc = compute_equivalence_accuracy(test_expansions, test_gt)
+
+    print(f"Test Accuracy = {test_acc:.2f}%")
 
 
 def main():

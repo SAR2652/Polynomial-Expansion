@@ -2,7 +2,7 @@ from torch.utils.data import Dataset    # type: ignore
 
 
 class PolynomialDataset(Dataset):
-    def __init__(self, factors, expansions, tokenizer):
+    def __init__(self, factors, tokenizer, expansions=None):
         self.factors = factors
         self.expansions = expansions
         self.tokenizer = tokenizer
@@ -14,7 +14,10 @@ class PolynomialDataset(Dataset):
         """Obtain a single tuple comprising of a tokenized factor and its
         corresponding tokenized expansion"""
         factor = self.factors[idx]
-        expansion = self.expansions[idx]
+        if self.expansions is not None:
+            expansion = self.expansions[idx]
+        else:
+            expansion = None
         factor_input_ids, expansion_label_ids = \
             self.tokenizer.encode(factor, expansion)
         item = dict()

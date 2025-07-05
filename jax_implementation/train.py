@@ -1,24 +1,26 @@
 import os
-import jax      # type: ignore
-import optax    # type: ignore
+import jax
+import optax
 import argparse
-import pandas as pd      # type: ignore
-from jax import random      # type: ignore
-import jax.numpy as jnp     # type: ignore
+import pandas as pd
+from jax import random
+import jax.numpy as jnp
 from dataset import PolynomialDataset
-from torch.utils.data import DataLoader     # type: ignore
+from torch.utils.data import DataLoader
 from orbax.checkpoint import PyTreeCheckpointer
 from flax.training import train_state, orbax_utils
 from common_utils import load_tokenizer, collate_fn
+from jax_implementation.utils import init_train_state
 from jax_implementation.model import CrossAttentionModelFLAX
 from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 
 
 def get_training_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_filepath',
-                        type=str, help='Path to Input File',
-                        default='./output/training.csv')
+    parser.add_argument('--input_dir',
+                        type=str, help='Directory containing training, '
+                        'validation and test CSV files',
+                        default='./output')
     parser.add_argument('--random_state',
                         help='Random state for weights initialization',
                         type=int, default=42)
@@ -51,35 +53,16 @@ def get_training_arguments():
                         type=str,
                         help='Path to tokenizer which is to be used',
                         default='./output/tokenizer.joblib')
-    parser.add_argument('--teacher_force_ratio',
-                        type=float, default=0.5)
     parser.add_argument('--ckpt_dir',
                         help='Directory containing checkpoints',
                         type=str, default='checkpoints')
     parser.add_argument('--bidirectional',
                         help='Activate Bidirectionla LSTM in encoder',
                         action='store_true')
+    parser.add_argument('--use_cache',
+                        help='Activate Key-Value Caching',
+                        action='store_true')
     return parser.parse_args()
-
-
-def init_train_state(model, random_key, batch_size, seq_len, learning_rate
-                     ) -> train_state.TrainState:
-
-    dummy_inputs = jnp.ones((batch_size, seq_len),
-                            dtype=jnp.int32)
-    dummy_targets = jnp.ones((batch_size, seq_len),
-                             dtype=jnp.int32)
-
-    # Initialize the Model
-    variables = model.init(random_key, dummy_inputs, dummy_targets)
-    # Create the optimizer
-    optimizer = optax.adam(learning_rate)
-    # Create a State
-    return train_state.TrainState.create(
-        apply_fn=model.apply,
-        tx=optimizer,
-        params=variables['params']
-    )
 
 
 @jax.jit
@@ -96,11 +79,11 @@ def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
     gradient_fn = jax.value_and_grad(loss_fn, has_aux=True)
     (loss, logits), grads = gradient_fn(state.params)
     state = state.apply_gradients(grads=grads)
-    return state, loss
+    return state, loss, grads
 
 
 def train_model(args):
-    input_file = args.input_filepath
+    input_dir = args.input_dir
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
     random_state = args.random_state
@@ -112,26 +95,49 @@ def train_model(args):
     batch_size = args.batch_size
     tokenizer_filepath = args.tokenizer_filepath
     tokenizer = load_tokenizer(tokenizer_filepath)
-    teacher_force_ratio = args.teacher_force_ratio
+    use_cache = args.use_cache
     bidirectional = args.bidirectional
     ckpt_dir = os.path.join(args.ckpt_dir)
     os.makedirs(ckpt_dir, exist_ok=True)
     ckpt_dir = os.path.abspath(ckpt_dir)
 
-    df = pd.read_csv(input_file)
+    train_path = os.path.join(input_dir, 'training.csv')
+    val_path = os.path.join(input_dir, 'validation.csv')
+    test_path = os.path.join(input_dir, 'test.csv')
+
+    train_df = pd.read_csv(train_path)
+    val_df = pd.read_csv(val_path)
+    test_df = pd.read_csv(test_path)
     # df = df.iloc[:12800, :]
 
-    factors = df['factor'].tolist()
-    expansions = df['expansion'].tolist()
+    train_factors = train_df['factor'].tolist()
+    train_expansions = train_df['expansion'].tolist()
 
-    train_dataset = PolynomialDataset(factors, expansions, tokenizer)
+    val_factors = val_df['factor'].tolist()
+    val_expansions = val_df['expansion'].tolist()
+
+    test_factors = test_df['factor'].tolist()
+    test_expansions = test_df['expansion'].tolist()
+
+    train_dataset = PolynomialDataset(train_factors, train_expansions,
+                                      tokenizer)
+    val_dataset = PolynomialDataset(val_factors, val_expansions,
+                                    tokenizer)
+    test_dataset = PolynomialDataset(test_factors, test_expansions,
+                                     tokenizer)
 
     train_dataloader = DataLoader(train_dataset, shuffle=True,
                                   batch_size=batch_size, collate_fn=collate_fn)
 
+    val_dataloader = DataLoader(val_dataset, shuffle=True,
+                                batch_size=batch_size, collate_fn=collate_fn)
+
+    test_dataloader = DataLoader(test_dataset, shuffle=True,
+                                 batch_size=batch_size, collate_fn=collate_fn)
+
     model = CrossAttentionModelFLAX(
         embed_size, hidden_size, tokenizer.vocab_size, num_heads,
-        tokenizer.sos_token_id, bidirectional, teacher_force_ratio
+        tokenizer.sos_token_id, bidirectional, use_cache
     )
 
     prng_key = random.PRNGKey(random_state)

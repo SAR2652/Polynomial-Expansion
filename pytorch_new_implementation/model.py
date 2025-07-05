@@ -11,6 +11,7 @@ def reshape_vec(vec):
     vec = vec.permute(1, 0, 2)
     # Shape: (batch_size, 1, 2 * hidden_size)
     vec = vec.reshape(vec.shape[0], 1, -1)
+    # Shape: (1, batch_size, 2 * hidden_size)
     return vec.permute(1, 0, 2)
 
 
@@ -39,7 +40,8 @@ class Encoder(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, embed_dim: int, num_heads: int):
+    def __init__(self, embed_dim: int, num_heads: int,
+                 use_cache: bool = False):
         super(MultiHeadAttention, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
@@ -56,7 +58,7 @@ class MultiHeadAttention(nn.Module):
         self.out = nn.Linear(embed_dim, embed_dim)
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, query, keys=None, value=None):
+    def forward(self, query, keys=None, value=None, use_cache: bool = False):
 
         batch_size, query_seq_len, _ = query.shape
 
@@ -73,14 +75,16 @@ class MultiHeadAttention(nn.Module):
             value_seq_len = query_seq_len
 
         Q = self.query(query)
-        K = self.key(keys)
-        V = self.value(value)
 
         # Original shape is (batch_size, seq_len, embed_dim)
         # Reshape to (batch_size, seq_len, num_heads, head_dim)
         # Permute dimensions to (batch_size, num_heads, seq_len, head_dim)
         Q = Q.reshape(batch_size, query_seq_len, self.num_heads, self.head_dim)
         Q = Q.permute(0, 2, 1, 3)
+
+        # Repeat for keys and values
+        K = self.key(keys)
+        V = self.value(value)
         K = K.reshape(batch_size, keys_seq_len, self.num_heads, self.head_dim)
         K = K.permute(0, 2, 1, 3)
         V = V.reshape(batch_size, value_seq_len, self.num_heads, self.head_dim)
@@ -508,8 +512,13 @@ class DecoderSACA(nn.Module):
                             batch_first=True)
         self.fc_out = nn.Linear(embed_dim, vocab_size)
 
-    def forward(self, target_token, encoder_outputs, decoder_hidden_state,
-                decoder_cell_state):
+    def forward(self, target_token: torch.Tensor,
+                encoder_outputs: torch.Tensor,
+                decoder_hidden_state: torch.Tensor,
+                decoder_cell_state: torch.Tensor, eval: bool = False,
+                kv_cache: torch.Tensor = None,
+                decoder_tokens: torch.Tensor = None,
+                decoder_step: int = 0):
         """
         Args:
             target_token: (B, 1) Last generated token.
@@ -527,9 +536,21 @@ class DecoderSACA(nn.Module):
         # 1. Embed token (B, 1, E)
         embedded = self.embedding(target_token)
 
+        if kv_cache is not None:
+            kv_cache[:, decoder_step, :] = embedded.squeeze(1)
+
         # 2. Apply Self-Attention (no mask needed for one token)
-        self_attn_output = self.self_attention(embedded, embedded,
-                                               embedded)
+        if decoder_step > 0:
+            if kv_cache is None:
+                context_embeds = self.embedding(decoder_tokens)
+            else:
+                context_embeds = kv_cache[:, :decoder_step, :]
+
+            self_attn_output = self.self_attention(embedded, context_embeds,
+                                                   context_embeds)
+        else:
+            self_attn_output = self.self_attention(embedded, embedded,
+                                                   embedded)
 
         # print(f'Self Attention Output Shape = {self_attn_output.shape}')
 
@@ -558,9 +579,10 @@ class CrossAttentionModel(nn.Module):
     def __init__(self, enc_embed_dim: int, hidden_dim: int, vocab_size: int,
                  num_heads: int, sos_token_id: int,
                  device: torch.device, bidirectional: bool = False,
-                 teacher_force_ratio: float = 0.5):
+                 teacher_force_ratio: float = 0.5, use_cache: bool = False):
         super(CrossAttentionModel, self).__init__()
         self.enc_embed_dim = enc_embed_dim
+        self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self.vocab_size = vocab_size
         self.sos_token_id = sos_token_id
@@ -574,6 +596,7 @@ class CrossAttentionModel(nn.Module):
 
         self.decoder = DecoderSACA(hidden_dim, num_heads, vocab_size)
         self.device = device
+        self.use_cache = use_cache
 
     def forward(self, inputs, targets=None):
 
@@ -589,6 +612,14 @@ class CrossAttentionModel(nn.Module):
         outputs = torch.zeros(batch_size, target_len,
                               self.vocab_size).to(self.device)
 
+        # KV cache
+        context_tokens = None
+        kv_cache = None
+        if self.use_cache:
+            kv_cache = torch.zeros(batch_size, target_len, self.hidden_dim)
+        else:
+            context_tokens = torch.empty(batch_size, 0)
+
         decoder_input = torch.tensor([self.sos_token_id] * batch_size) \
             .unsqueeze(1).to(self.device)
 
@@ -596,8 +627,9 @@ class CrossAttentionModel(nn.Module):
 
             logits, decoder_hidden_state, decoder_cell_state = self.decoder(
                 decoder_input, encoder_outputs, decoder_hidden_state,
-                decoder_cell_state
+                decoder_cell_state, kv_cache, context_tokens, t
             )
+
             outputs[:, t, :] = logits
 
             use_teacher_forcing = random.random() < self.teacher_force_ratio
@@ -608,6 +640,7 @@ class CrossAttentionModel(nn.Module):
             else:
                 # print(f'Eval Logits Shape = {logits.shape}')
                 decoder_input = logits.argmax(-1)
+
                 # print(f'Eval Shape 1 = {decoder_input.shape}')
                 decoder_input = decoder_input.unsqueeze(1)
                 # print(f'Eval Shape 2 = {decoder_input.shape}')

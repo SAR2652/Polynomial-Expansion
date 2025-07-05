@@ -1,10 +1,12 @@
 import torch
 import argparse
-import pandas as pd     # type: ignore
+import numpy as np
+import pandas as pd
 import torch.nn.functional as F
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
-from common_utils import load_tokenizer, collate_fn
+from common_utils import compute_equivalence_accuracy, load_tokenizer, \
+    collate_fn
 from pytorch_new_implementation.model import CrossAttentionModel
 
 
@@ -26,7 +28,7 @@ def get_arguments():
                         type=int, default=64)
     parser.add_argument('--batch_size',
                         help='Batch size for model training',
-                        type=int, default=1)
+                        type=int, default=768)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -44,6 +46,9 @@ def get_arguments():
                         help='Number of Attention Heads',
                         type=int, default=4)
     return parser.parse_args()
+
+
+
 
 
 def batched_inference(args):
@@ -104,6 +109,7 @@ def batched_inference(args):
     model.eval()
 
     expressions = list()
+    original_expressions = list()
 
     for i, batch in enumerate(val_dataloader):
 
@@ -122,10 +128,19 @@ def batched_inference(args):
 
         curr_expressions = tokenizer.batch_decode_expressions(best_guesses)
         expressions.extend(curr_expressions)
+        original_expressions.extend(e)
 
-    factors = df['factor'].tolist()
-    for i in range(len(expressions)):
-        print(f'{factors[i]}={expressions[i]}')
+    # factors = df['factor'].tolist()
+    # for i in range(len(expressions)):
+    #     print(f'{factors[i]}={expressions[i]}')
+    expressions = np.asarray(expressions)
+    original_expressions = np.asarray(original_expressions)
+    accuracy = (expressions == original_expressions).sum() * 100 / \
+        len(expressions)
+    print(f'Accuracy = {accuracy:.2f}%')
+
+    accuracy = compute_equivalence_accuracy(expressions, original_expressions)
+    print(f"Symbolic equivalence accuracy: {accuracy:.2f}%")
 
 
 def main():

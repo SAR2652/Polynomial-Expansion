@@ -1,4 +1,6 @@
+import jax
 import random
+from enum import Enum
 import jax.numpy as jnp
 import flax.linen as nn
 
@@ -65,9 +67,16 @@ class EncoderFLAX(nn.Module):
         return outputs, hidden, cell
 
 
+class Mode(Enum):
+    NONE = "none"
+    SELF = "self"
+    CROSS = "cross"
+
+
 class MultiHeadAttentionFLAX(nn.Module):
     embed_dim: int
     num_heads: int
+    mode: Enum
 
     def setup(self):
         assert self.embed_dim % self.num_heads == 0, \
@@ -83,7 +92,9 @@ class MultiHeadAttentionFLAX(nn.Module):
         # Output projection
         self.out_proj = nn.Dense(self.embed_dim)
 
-    def __call__(self, query, key=None, value=None):
+    def __call__(self, query: jnp.ndarray, key: jnp.ndarray = None,
+                 value: jnp.ndarray = None, decoder_step: int = None,
+                 kv_cache: jnp.ndarray = None):
         batch_size, query_seq_len, _ = query.shape
 
         # Default to self-attention
@@ -97,18 +108,45 @@ class MultiHeadAttentionFLAX(nn.Module):
 
         # Project queries, keys, and values
         Q = self.query_proj(query)  # (batch_size, query_seq_len, embed_dim)
-        K = self.key_proj(key)      # (batch_size, key_seq_len, embed_dim)
-        V = self.value_proj(value)  # (batch_size, value_seq_len, embed_dim)
 
         # Reshape to (batch_size, seq_len, num_heads, head_dim)
         Q = Q.reshape(batch_size, query_seq_len, self.num_heads, self.head_dim)
-        K = K.reshape(batch_size, key_seq_len, self.num_heads, self.head_dim)
-        V = V.reshape(batch_size, value_seq_len, self.num_heads, self.head_dim)
 
         # Transpose to (batch_size, num_heads, seq_len, head_dim)
         Q = jnp.transpose(Q, (0, 2, 1, 3))
-        K = jnp.transpose(K, (0, 2, 1, 3))
-        V = jnp.transpose(V, (0, 2, 1, 3))
+
+        # Repeat the above operations for Keys & Values
+        # if:
+        # 1. Attention mode is "cross" and kv_cache is not None but
+        # kv_cache['key'] is None and kv_cache['value'] is None
+        # 2. Attention mode is "self"
+        if self.mode == Mode.SELF or \
+            (self.mode == Mode.CROSS and isinstance(kv_cache, dict) and
+             kv_cache['key'] is None and kv_cache['value'] is None):
+            K = self.key_proj(key)      # (batch_size, key_seq_len, embed_dim)
+            V = self.value_proj(value)
+            # (batch_size, value_seq_len, embed_dim)
+            K = K.reshape(batch_size, key_seq_len, self.num_heads,
+                          self.head_dim)
+            V = V.reshape(batch_size, value_seq_len, self.num_heads,
+                          self.head_dim)
+            K = jnp.transpose(K, (0, 2, 1, 3))
+            V = jnp.transpose(V, (0, 2, 1, 3))
+
+            if self.mode == Mode.CROSS:
+                kv_cache['key'] = K
+                kv_cache['value'] = V
+
+        # Do this only if Attention Mode is "self"
+        if self.mode == Mode.SELF and kv_cache is not None:
+            kv_cache['key'] = \
+                kv_cache['key'].at[:, :, decoder_step: decoder_step + 1, :] \
+                .set(K)
+            kv_cache['value'] = \
+                kv_cache['value'].at[:, :, decoder_step: decoder_step + 1, :] \
+                .set(V)
+            K = kv_cache['key']
+            V = kv_cache['value']
 
         # Compute scaled dot-product attention
         attention_scores = jnp.einsum("bhqd, bhkd -> bhqk", Q, K) * self.scale
@@ -135,18 +173,28 @@ class DecoderSACAFLAX(nn.Module):
     embed_dim: int
     num_heads: int
     vocab_size: int
+    use_cache: bool
 
     def setup(self):
         # Token embedding layer
         self.embedding = nn.Embed(self.vocab_size, self.embed_dim)
 
+        if self.use_cache:
+            self_attn_mode = Mode.SELF
+            cross_attn_mode = Mode.CROSS
+        else:
+            self_attn_mode = Mode.NONE
+            cross_attn_mode = Mode.NONE
+
         # Self-Attention (decoder attending to its own past tokens)
         self.self_attention = MultiHeadAttentionFLAX(self.embed_dim,
-                                                     self.num_heads)
+                                                     self.num_heads,
+                                                     self_attn_mode)
 
         # Cross-Attention (queries from decoder, keys/values from encoder)
         self.cross_attention = MultiHeadAttentionFLAX(self.embed_dim,
-                                                      self.num_heads)
+                                                      self.num_heads,
+                                                      cross_attn_mode)
 
         # LSTM processes combined attention representations
         self.lstm = nn.LSTMCell(self.embed_dim)
@@ -154,8 +202,11 @@ class DecoderSACAFLAX(nn.Module):
         # Final projection to vocabulary size
         self.fc_out = nn.Dense(self.vocab_size)
 
-    def __call__(self, target_token, encoder_outputs, hidden_state,
-                 cell_state):
+    def __call__(self, target_token: jnp.ndarray, encoder_outputs: jnp.ndarray,
+                 hidden_state: jnp.ndarray, cell_state: jnp.ndarray,
+                 decoder_tokens: jnp.ndarray = None, decoder_step: int = 0,
+                 self_attn_kv_cache: jnp.ndarray = None,
+                 cross_attn_kv_cache: jnp.ndarray = None):
         """
         Args:
             target_token: (B, 1) Last generated token.
@@ -175,17 +226,27 @@ class DecoderSACAFLAX(nn.Module):
 
         # print(f'Embedded = {embedded.shape}')
 
-        # 2. Apply Self-Attention (causal)
-        self_attn_output = self.self_attention(embedded, embedded, embedded)
-        # (B, 1, E)
+        # 2. Apply Self-Attention
+        if decoder_step > 0 and self_attn_kv_cache is None:
+            context_embeds = self.embedding(decoder_tokens)
+            self_attn_output = self.self_attention(embedded, context_embeds,
+                                                   context_embeds,
+                                                   decoder_step,
+                                                   self_attn_kv_cache)
+        else:
+            self_attn_output = self.self_attention(embedded, embedded,
+                                                   embedded, decoder_step,
+                                                   self_attn_kv_cache)
 
         # print(f'Self Attn = {self_attn_output.shape}')
 
         # 3. Apply Cross-Attention (queries from Self-Attention Output,
         # keys/values from encoder)
+        # (B, 1, E)
         cross_attn_output = self.cross_attention(self_attn_output,
                                                  encoder_outputs,
-                                                 encoder_outputs)  # (B, 1, E)
+                                                 encoder_outputs,
+                                                 cross_attn_kv_cache)
 
         # print(f'Cross Attn = {cross_attn_output.shape}')
 
@@ -220,6 +281,7 @@ class CrossAttentionModelFLAX(nn.Module):
     num_heads: int
     sos_token_id: int
     bidirectional: bool = False
+    use_cache: bool = False
     teacher_force_ratio: float = 0.5
 
     def setup(self):
@@ -229,9 +291,10 @@ class CrossAttentionModelFLAX(nn.Module):
         hidden_dim = self.hidden_dim * 2 if self.bidirectional else \
             self.hidden_dim
         self.decoder = DecoderSACAFLAX(hidden_dim, self.num_heads,
-                                       self.vocab_size)
+                                       self.vocab_size, self.use_cache)
 
-    def __call__(self, inputs, targets=None):
+    def __call__(self, inputs: jnp.ndarray, targets: jnp.ndarray = None,
+                 eval: bool = False):
         """
         Args:
             inputs: (B, S) Input token indices.
@@ -250,6 +313,23 @@ class CrossAttentionModelFLAX(nn.Module):
         batch_size, target_len, _ = encoder_outputs.shape
         outputs = jnp.zeros((batch_size, target_len, self.vocab_size))
 
+        if not self.use_cache:
+            context_tokens = jnp.empty(batch_size, target_len)
+            self_attn_kv_cache = None
+            cross_attn_kv_cache = None
+        else:
+            context_tokens = None
+            self_attn_kv_cache = {
+                'key': jnp.zeros(batch_size, target_len, self.num_heads,
+                                 self.hidden_dim // self.num_heads),
+                'value': jnp.zeros(batch_size, target_len, self.num_heads,
+                                   self.hidden_dim // self.num_heads)
+            }
+            cross_attn_kv_cache = {
+                'key': None,
+                'value': None
+            }
+
         # Initial decoder input: <SOS> token
         decoder_input = jnp.full((batch_size, 1), self.sos_token_id)
 
@@ -257,22 +337,30 @@ class CrossAttentionModelFLAX(nn.Module):
 
             logits, decoder_hidden_state, decoder_cell_state = self.decoder(
                 decoder_input, encoder_outputs, decoder_hidden_state,
-                decoder_cell_state
+                decoder_cell_state, context_tokens, t, self_attn_kv_cache,
+                cross_attn_kv_cache
             )
 
             # print(f'Logits Shape = {logits.shape}')
 
             outputs = outputs.at[:, t, :].set(logits)
 
-            # Decide whether to use teacher forcing
-            use_teacher_forcing = random.uniform(0, 1) < \
-                self.teacher_force_ratio
+            use_teacher_forcing = random.random() < self.teacher_force_ratio
 
-            if targets is not None and use_teacher_forcing:
-                decoder_input = targets[:, t:t+1]  # Use ground truth
+            # Teacher forcing during training at all times
+            if not eval and use_teacher_forcing:
+                if targets is not None:
+                    decoder_input = targets[:, t:t+1]  # Use ground truth
+                else:
+                    print('Training with no targets is not possible!')
+                    exit(1)
+
             else:
-                # print(logits.shape)
-                decoder_input = jnp.argmax(logits, axis=-1, keepdims=True)
-                # Use predicted token
+                probs = jax.nn.softmax(logits, axis=-1)
+                decoder_input = jnp.argmax(probs, axis=-1, keepdims=True)
+
+                if not self.use_cache:
+                    context_tokens = context_tokens.at[:, t:t+1] \
+                        .set(decoder_input)
 
         return outputs
