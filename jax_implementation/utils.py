@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 from flax.training import train_state
 
 
-@jax.jit
 def eval_step(model, params, inputs):
     logits = model.apply({'params': params}, inputs)
     probs = jax.nn.softmax(logits, axis=-1)
@@ -41,8 +40,9 @@ def train_epoch_or_evaluate(
     for i, batch in enumerate(dataloader):
 
         inputs, targets, _, expansions = batch
-        assert all(x is None for x in targets if mode != "infer"), \
-            "Targets can be None ONLY in inference mode!"
+        if mode != "infer":
+            assert all(x is not None for x in targets), \
+                "Targets can be None ONLY in inference mode!"
         inputs = jnp.array(inputs, dtype=jnp.int32)
         targets = jnp.array(targets, dtype=jnp.int32)
 

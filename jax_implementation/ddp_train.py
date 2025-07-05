@@ -20,12 +20,9 @@ from common_utils import compute_equivalence_accuracy, load_tokenizer, \
 
 def get_training_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_filepath',
-                        type=str, help='Path to Input File',
-                        default='./output/training.csv')
-    parser.add_argument('--model_parameters_dir',
-                        help='Directory to load model checkpoints',
-                        type=str, default='./output')
+    parser.add_argument('--input_dir',
+                        type=str, help='Directory containing Input Files',
+                        default='./output')
     parser.add_argument('--random_state',
                         help='Random state for weights initialization',
                         type=int, default=42)
@@ -165,7 +162,6 @@ def train_model(args):
 
     train_path = os.path.join(input_dir, 'training.csv')
     val_path = os.path.join(input_dir, 'validation.csv')
-    test_path = os.path.join(input_dir, 'test.csv')
 
     train_df = pd.read_csv(train_path)
     val_df = pd.read_csv(val_path)
@@ -177,10 +173,9 @@ def train_model(args):
     val_factors = val_df['factor'].tolist()
     val_expansions = val_df['expansion'].tolist()
 
-    train_dataset = PolynomialDataset(train_factors, train_expansions,
-                                      tokenizer)
-    val_dataset = PolynomialDataset(val_factors, val_expansions,
-                                    tokenizer)
+    train_dataset = PolynomialDataset(train_factors, tokenizer,
+                                      train_expansions)
+    val_dataset = PolynomialDataset(val_factors, tokenizer, val_expansions)
 
     train_dataloader = DataLoader(train_dataset, shuffle=True,
                                   batch_size=batch_size, collate_fn=collate_fn)
@@ -215,10 +210,10 @@ def train_model(args):
 
     # initialize model training/evaluation and update functions
     train_step = create_train_step_fn(ddp)
-    if ddp:
-        update_model = jax.pmap(apply_gradient_update)
-    else:
-        update_model = apply_gradient_update
+    update_model = jax.pmap(apply_gradient_update) if ddp else \
+        jax.jit(apply_gradient_update)
+    optimized_eval_step = jax.pmap(eval_step) if ddp else \
+        jax.jit(eval_step)
 
     best_val_acc = float('-inf')
     for epoch in range(epochs):
@@ -232,7 +227,7 @@ def train_model(args):
 
         val_preds, _, val_gt = train_epoch_or_evaluate(
             (model, state['params']), val_dataloader, tokenizer, ddp,
-            eval_step, None, num_devices, "eval",
+            optimized_eval_step, None, num_devices, "eval",
             tokenizer.MAX_SEQUENCE_LENGTH, tokenizer.vocab_size
         )
 
@@ -260,20 +255,20 @@ def train_model(args):
     params = state['params']
 
     # load and evaluate test set
+    test_path = os.path.join(input_dir, 'test.csv')
     test_df = pd.read_csv(test_path)
 
     test_factors = test_df['factor'].tolist()
     test_expansions = test_df['expansion'].tolist()
 
-    test_dataset = PolynomialDataset(test_factors, test_expansions,
-                                     tokenizer)
+    test_dataset = PolynomialDataset(test_factors, tokenizer, test_expansions)
     test_dataloader = DataLoader(test_dataset, shuffle=True,
                                  batch_size=batch_size, collate_fn=collate_fn)
 
     test_preds, _, test_gt = train_epoch_or_evaluate(
         (model, params), test_dataloader, tokenizer, ddp,
-        eval_step, None, num_devices, "eval", tokenizer.MAX_SEQUENCE_LENGTH,
-        tokenizer.vocab_size
+        optimized_eval_step, None, num_devices, "eval",
+        tokenizer.MAX_SEQUENCE_LENGTH, tokenizer.vocab_size
     )
 
     test_expansions = tokenizer.batch_decode_expressions(test_preds)

@@ -120,7 +120,7 @@ class MultiHeadAttentionFLAX(nn.Module):
         # 1. Attention mode is "cross" and kv_cache is not None but
         # kv_cache['key'] is None and kv_cache['value'] is None
         # 2. Attention mode is "self"
-        if self.mode == Mode.SELF or \
+        if self.mode in [Mode.SELF, Mode.NONE] or \
             (self.mode == Mode.CROSS and isinstance(kv_cache, dict) and
              kv_cache['key'] is None and kv_cache['value'] is None):
             K = self.key_proj(key)      # (batch_size, key_seq_len, embed_dim)
@@ -314,7 +314,8 @@ class CrossAttentionModelFLAX(nn.Module):
         outputs = jnp.zeros((batch_size, target_len, self.vocab_size))
 
         if not self.use_cache:
-            context_tokens = jnp.empty(batch_size, target_len)
+            context_tokens = jnp.empty((batch_size, target_len),
+                                       dtype=jnp.int32)
             self_attn_kv_cache = None
             cross_attn_kv_cache = None
         else:
