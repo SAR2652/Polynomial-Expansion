@@ -1,1 +1,1 @@
-python -m jax_implementation.ddp_train 
+python -m jax_implementation.ddp_train --use_cache

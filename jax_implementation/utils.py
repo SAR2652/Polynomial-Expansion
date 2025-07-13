@@ -7,7 +7,7 @@ from flax.training import train_state
 
 
 def eval_step(model, params, inputs):
-    logits = model.apply({'params': params}, inputs)
+    logits = model.apply({'params': params}, inputs, targets=None, eval=True)
     probs = jax.nn.softmax(logits, axis=-1)
     preds = jnp.argmax(probs, axis=-1)
     return preds, probs
@@ -31,15 +31,17 @@ def train_epoch_or_evaluate(
             "function as value in 'train' mode"
 
     if mode in ["eval", "infer"]:
-        predictions = np.empty(0, max_seq_len, dtype=np.int32)
-        probabilities = np.empty(0, max_seq_len, vocab_size, dtype=np.float32)
+        predictions = np.empty((0, max_seq_len), dtype=np.int32)
+        probabilities = np.empty((0, max_seq_len, vocab_size),
+                                 dtype=np.float32)
 
         if mode == "eval":
             ground_truth = list()
 
-    for i, batch in enumerate(dataloader):
+    for i, batch in enumerate(dataloader, 0):
 
         inputs, targets, _, expansions = batch
+
         if mode != "infer":
             assert all(x is not None for x in targets), \
                 "Targets can be None ONLY in inference mode!"
@@ -54,11 +56,10 @@ def train_epoch_or_evaluate(
                                           tokenizer.MAX_SEQUENCE_LENGTH)
 
         if mode == "train":
-
             state, loss, grads = step_function(state, inputs, targets)
             running_loss += loss
 
-            if (i + 1) % (len(dataloader) // 100) == 0:
+            if (i + 1) % (len(dataloader) // 1) == 0:
                 print(f'Running Loss after {i + 1} batches = '
                       f'{running_loss:.4f}')
 

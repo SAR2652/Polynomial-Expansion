@@ -6,14 +6,13 @@ import pandas as pd
 from jax import random
 import jax.numpy as jnp
 from typing import Tuple
+import orbax.checkpoint as ocp
+from flax.training import train_state
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
-from orbax.checkpoint import PyTreeCheckpointer
 from flax.jax_utils import replicate, unreplicate
-from flax.training import train_state, orbax_utils
 from jax_implementation.model import CrossAttentionModelFLAX
 from jax_implementation.utils import eval_step, train_epoch_or_evaluate
-from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 from common_utils import compute_equivalence_accuracy, load_tokenizer, \
     collate_fn
 
@@ -50,7 +49,7 @@ def get_training_arguments():
     parser.add_argument('--epochs',
                         type=int,
                         help='Number of Epochs to train the model',
-                        default=1000)
+                        default=1)
     parser.add_argument('--tokenizer_filepath',
                         type=str,
                         help='Path to tokenizer which is to be used',
@@ -90,14 +89,12 @@ def create_train_step_fn(ddp: bool = False):
         train_step: (state, inputs, targets) -> (state, loss, grads)
     """
 
-    def train_step(
-        state: train_state.TrainState,
-        inputs: jnp.ndarray,
-        targets: jnp.ndarray
-    ) -> Tuple[train_state.TrainState, jnp.ndarray, dict]:
+    def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
+                   targets: jnp.ndarray
+                   ) -> Tuple[train_state.TrainState, jnp.ndarray, dict]:
 
         def loss_fn(params):
-            logits = state.apply_fn({'params': params}, inputs)
+            logits = state.apply_fn({'params': params}, inputs, targets)
             loss = optax.softmax_cross_entropy_with_integer_labels(logits,
                                                                    targets)
             return loss.mean(), logits
@@ -166,6 +163,9 @@ def train_model(args):
     train_df = pd.read_csv(train_path)
     val_df = pd.read_csv(val_path)
 
+    train_df = train_df.iloc[:1000, :]
+    val_df = val_df.iloc[:1000, :]
+
     # df = df.iloc[:12800, :]
 
     train_factors = train_df['factor'].tolist()
@@ -198,10 +198,11 @@ def train_model(args):
         state = replicate(state)
 
     # Initialize model checkpointing requirements
-    orbax_checkpointer = PyTreeCheckpointer()
-    options = CheckpointManagerOptions(max_to_keep=2, create=True)
-    checkpoint_manager = CheckpointManager(ckpt_dir, orbax_checkpointer,
-                                           options)
+    options = ocp.CheckpointManagerOptions(max_to_keep=2, create=True)
+    checkpoint_manager = ocp.CheckpointManager(
+        ocp.test_utils.erase_and_create_empty(ckpt_dir),
+        options=options
+    )
 
     name = 'best_model_saca'
     if bidirectional:
@@ -210,10 +211,10 @@ def train_model(args):
 
     # initialize model training/evaluation and update functions
     train_step = create_train_step_fn(ddp)
-    update_model = jax.pmap(apply_gradient_update) if ddp else \
-        jax.jit(apply_gradient_update)
-    optimized_eval_step = jax.pmap(eval_step) if ddp else \
-        jax.jit(eval_step)
+    update_model = jax.pmap(apply_gradient_update, axis_name='num_devices') \
+        if ddp else jax.jit(apply_gradient_update)
+    optimized_eval_step = jax.pmap(eval_step, axis_name='num_devices') \
+        if ddp else jax.jit(eval_step, static_argnums=0)
 
     best_val_acc = float('-inf')
     for epoch in range(epochs):
@@ -226,7 +227,7 @@ def train_model(args):
         avg_loss = running_loss / len(train_dataset)
 
         val_preds, _, val_gt = train_epoch_or_evaluate(
-            (model, state['params']), val_dataloader, tokenizer, ddp,
+            (model, state.params), val_dataloader, tokenizer, ddp,
             optimized_eval_step, None, num_devices, "eval",
             tokenizer.MAX_SEQUENCE_LENGTH, tokenizer.vocab_size
         )
@@ -240,23 +241,26 @@ def train_model(args):
         # save model state on only one GPU
         if val_acc > best_val_acc and \
                 (not ddp or (ddp and jax.process_index() == 0)):
-            temp_state = unreplicate(state)
-            ckpt = {'state': temp_state}
-            save_args = orbax_utils.save_args_from_target(ckpt)
-            checkpoint_manager.save(epoch + 1, ckpt,
-                                    save_kwargs={
-                                        'save_args': save_args
-                                    })
+            if ddp:
+                save_state = unreplicate(state)
+            else:
+                save_state = state
+            checkpoint_manager.save(
+                epoch + 1,
+                args=ocp.args.StandardSave(save_state)
+            )
+
+    checkpoint_manager.wait_until_finished()
 
     # load best performing checkpoint
     step = checkpoint_manager.latest_step()
-    checkpoint = checkpoint_manager.restore(step)
-    state = checkpoint['state']
+    state = checkpoint_manager.restore(step)
     params = state['params']
 
     # load and evaluate test set
     test_path = os.path.join(input_dir, 'test.csv')
     test_df = pd.read_csv(test_path)
+    test_df = test_df.iloc[:1000, :]
 
     test_factors = test_df['factor'].tolist()
     test_expansions = test_df['expansion'].tolist()

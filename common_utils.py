@@ -73,9 +73,10 @@ class Tokenizer:
 
             expansion_label_ids.extend([self.pad_token_id] *
                                        expansion_padding_length)
-        else:
-            expansion_label_ids = None
-        return factor_input_ids, expansion_label_ids
+
+            return factor_input_ids, expansion_label_ids
+
+        return factor_input_ids
 
     def encode_expression(self, expression):
         """Encode a single expression into its corresponding numeric ids"""
@@ -106,7 +107,7 @@ class Tokenizer:
         batch_concat_operation_map = map(''.join,
                                          batch_decoded_expressions_map)
 
-        return batch_concat_operation_map
+        return list(batch_concat_operation_map)
 
     def validate(self):
         for k, v in self.vocab_dict.items():
@@ -141,8 +142,9 @@ def collate_fn(batch):
     target_ids = [item["target_ids"] for item in batch]
     expansions = [item["expansion"] for item in batch]
 
+    # print(target_ids)
     target_flag = False
-    if not all(x is None for x in target_ids):
+    if not any(x is None for x in target_ids):
         target_flag = True
 
     # print(input_ids)

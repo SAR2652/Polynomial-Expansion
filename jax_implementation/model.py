@@ -118,11 +118,18 @@ class MultiHeadAttentionFLAX(nn.Module):
         # Repeat the above operations for Keys & Values
         # if:
         # 1. Attention mode is "cross" and kv_cache is not None but
-        # kv_cache['key'] is None and kv_cache['value'] is None
+        # kv_cache['key'] is None and kv_cache['value'] is None.
+        # Cross Attention is done between encoder outputs and current token.
+        # Encoder outputs are constant, hece calculate K/V only once and
+        # cache them for later use
         # 2. Attention mode is "self"
+        # Self Attention occurse between current token and all previous tokens
+
         if self.mode in [Mode.SELF, Mode.NONE] or \
             (self.mode == Mode.CROSS and isinstance(kv_cache, dict) and
              kv_cache['key'] is None and kv_cache['value'] is None):
+
+            # Calculate K/V matrices
             K = self.key_proj(key)      # (batch_size, key_seq_len, embed_dim)
             V = self.value_proj(value)
             # (batch_size, value_seq_len, embed_dim)
@@ -133,18 +140,24 @@ class MultiHeadAttentionFLAX(nn.Module):
             K = jnp.transpose(K, (0, 2, 1, 3))
             V = jnp.transpose(V, (0, 2, 1, 3))
 
+            # Do this only if Attention Mode is "cross"
+            # Assignment Step for Cross Attention K/V values IF using KV Cache
             if self.mode == Mode.CROSS:
                 kv_cache['key'] = K
                 kv_cache['value'] = V
 
-        # Do this only if Attention Mode is "self"
-        if self.mode == Mode.SELF and kv_cache is not None:
-            kv_cache['key'] = \
-                kv_cache['key'].at[:, :, decoder_step: decoder_step + 1, :] \
-                .set(K)
-            kv_cache['value'] = \
-                kv_cache['value'].at[:, :, decoder_step: decoder_step + 1, :] \
-                .set(V)
+        if self.mode in [Mode.SELF, Mode.CROSS] and kv_cache is not None:
+
+            # Do this only if Attention Mode is "self"
+            # Assign new token's K,V vectors for Self Attention only
+            if self.mode == Mode.SELF:
+                kv_cache['key'] = \
+                    kv_cache['key'] \
+                    .at[:, :, decoder_step: decoder_step + 1, :].set(K)
+                kv_cache['value'] = \
+                    kv_cache['value'] \
+                    .at[:, :, decoder_step: decoder_step + 1, :].set(V)
+
             K = kv_cache['key']
             V = kv_cache['value']
 
@@ -166,7 +179,10 @@ class MultiHeadAttentionFLAX(nn.Module):
         attention_output = attention_output.reshape(batch_size, query_seq_len,
                                                     self.embed_dim)
 
-        return self.out_proj(attention_output)
+        if kv_cache is not None:
+            return self.out_proj(attention_output), kv_cache
+
+        return self.out_proj(attention_output), None
 
 
 class DecoderSACAFLAX(nn.Module):
@@ -228,25 +244,26 @@ class DecoderSACAFLAX(nn.Module):
 
         # 2. Apply Self-Attention
         if decoder_step > 0 and self_attn_kv_cache is None:
-            context_embeds = self.embedding(decoder_tokens)
+            context_embeds = self.embedding(
+                decoder_tokens[:, :decoder_step]
+            )
             self_attn_output = self.self_attention(embedded, context_embeds,
                                                    context_embeds,
                                                    decoder_step,
                                                    self_attn_kv_cache)
         else:
-            self_attn_output = self.self_attention(embedded, embedded,
-                                                   embedded, decoder_step,
-                                                   self_attn_kv_cache)
+            self_attn_output, self_attn_kv_cache = \
+                self.self_attention(embedded, embedded, embedded,
+                                    decoder_step, self_attn_kv_cache)
 
         # print(f'Self Attn = {self_attn_output.shape}')
 
         # 3. Apply Cross-Attention (queries from Self-Attention Output,
         # keys/values from encoder)
         # (B, 1, E)
-        cross_attn_output = self.cross_attention(self_attn_output,
-                                                 encoder_outputs,
-                                                 encoder_outputs,
-                                                 cross_attn_kv_cache)
+        cross_attn_output, cross_attn_kv_cache = \
+            self.cross_attention(self_attn_output, encoder_outputs,
+                                 encoder_outputs, kv_cache=cross_attn_kv_cache)
 
         # print(f'Cross Attn = {cross_attn_output.shape}')
 
@@ -314,17 +331,17 @@ class CrossAttentionModelFLAX(nn.Module):
         outputs = jnp.zeros((batch_size, target_len, self.vocab_size))
 
         if not self.use_cache:
-            context_tokens = jnp.empty((batch_size, target_len),
+            context_tokens = jnp.zeros((batch_size, target_len),
                                        dtype=jnp.int32)
             self_attn_kv_cache = None
             cross_attn_kv_cache = None
         else:
             context_tokens = None
             self_attn_kv_cache = {
-                'key': jnp.zeros(batch_size, target_len, self.num_heads,
-                                 self.hidden_dim // self.num_heads),
-                'value': jnp.zeros(batch_size, target_len, self.num_heads,
-                                   self.hidden_dim // self.num_heads)
+                'key': jnp.zeros((batch_size, self.num_heads, target_len,
+                                 self.hidden_dim // self.num_heads)),
+                'value': jnp.zeros((batch_size, self.num_heads, target_len,
+                                   self.hidden_dim // self.num_heads))
             }
             cross_attn_kv_cache = {
                 'key': None,
@@ -361,7 +378,8 @@ class CrossAttentionModelFLAX(nn.Module):
                 decoder_input = jnp.argmax(probs, axis=-1, keepdims=True)
 
                 if not self.use_cache:
-                    context_tokens = context_tokens.at[:, t:t+1] \
-                        .set(decoder_input)
+                    context_tokens = context_tokens.at[:, t:t + 1].set(
+                        decoder_input.reshape((batch_size, 1))
+                    )
 
         return outputs
