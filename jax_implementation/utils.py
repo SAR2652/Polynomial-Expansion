@@ -45,6 +45,7 @@ def train_epoch_or_evaluate(
         if mode != "infer":
             assert all(x is not None for x in targets), \
                 "Targets can be None ONLY in inference mode!"
+
         inputs = jnp.array(inputs, dtype=jnp.int32)
         targets = jnp.array(targets, dtype=jnp.int32)
 

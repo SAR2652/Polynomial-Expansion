@@ -54,8 +54,6 @@ def get_training_arguments():
                         type=str,
                         help='Path to tokenizer which is to be used',
                         default='./output/tokenizer.joblib')
-    parser.add_argument('--teacher_force_ratio',
-                        type=float, default=0.5)
     parser.add_argument('--bidirectional',
                         action='store_true',
                         help='Use bidirectional model')
@@ -71,6 +69,12 @@ def get_training_arguments():
     parser.add_argument('--ddp',
                         help='Activate Distributed Data Parallel',
                         action='store_true')
+    parser.add_argument('--teacher_force_ratio',
+                        help='Teacher force ratio',
+                        type=float, default=0.5)
+    parser.add_argument('--warmup_steps',
+                        help='Number of warm up steps before training',
+                        type=int, default=10)
     return parser.parse_args()
 
 
@@ -115,8 +119,8 @@ def create_train_step_fn(ddp: bool = False):
         jax.jit(train_step)
 
 
-def init_train_state(model, random_key, batch_size, seq_len, learning_rate
-                     ) -> train_state.TrainState:
+def init_train_state(model, random_key, batch_size: int, seq_len: int,
+                     learning_rate: float) -> train_state.TrainState:
 
     dummy_inputs = jnp.ones((batch_size, seq_len),
                             dtype=jnp.int32)
@@ -135,10 +139,37 @@ def init_train_state(model, random_key, batch_size, seq_len, learning_rate
     )
 
 
+def load_data_and_return_dataloader(filepath, tokenizer, batch_size,
+                                    return_dataset: bool = False,
+                                    num_samples: int = 0):
+    df = pd.read_csv(filepath)
+    if num_samples > 0:
+        df = df.iloc[:num_samples, :]
+    factors = df['factor'].tolist()
+    expansions = df['expansion'].tolist()
+    dataset = PolynomialDataset(factors, tokenizer, expansions)
+    dataloader = DataLoader(dataset, shuffle=True,
+                            batch_size=batch_size, collate_fn=collate_fn)
+
+    if return_dataset:
+        return dataloader, dataset
+
+    return dataloader
+
+
 def train_model(args):
+
+    # input/output directories
     input_dir = args.input_dir
     output_dir = args.output_dir
-    os.makedirs(output_dir, exist_ok=True)
+    ckpt_dir = os.path.join(output_dir, args.ckpt_dir)
+    for directory in [output_dir, ckpt_dir]:
+        os.makedirs(directory, exist_ok=True)
+    ckpt_dir = os.path.abspath(ckpt_dir)
+    tokenizer_filepath = args.tokenizer_filepath
+    tokenizer = load_tokenizer(tokenizer_filepath)
+
+    # hyperparameters
     random_state = args.random_state
     embed_size = args.embed_dim
     hidden_size = args.hidden_dim
@@ -146,45 +177,19 @@ def train_model(args):
     learning_rate = args.learning_rate
     epochs = args.epochs
     batch_size = args.batch_size
-    tokenizer_filepath = args.tokenizer_filepath
-    tokenizer = load_tokenizer(tokenizer_filepath)
     bidirectional = args.bidirectional
-    ckpt_dir = os.path.join(args.ckpt_dir)
-    os.makedirs(ckpt_dir, exist_ok=True)
-    ckpt_dir = os.path.abspath(ckpt_dir)
+    teacher_force_ratio = args.teacher_force_ratio
+    warmup_steps = args.warmup_steps
+
+    # performance optimizations
     use_cache = args.use_cache
     ddp = args.ddp
     num_devices = jax.local_device_count()
     print(f'Number of Devices = {num_devices}')
 
-    train_path = os.path.join(input_dir, 'training.csv')
-    val_path = os.path.join(input_dir, 'validation.csv')
-
-    train_df = pd.read_csv(train_path)
-    val_df = pd.read_csv(val_path)
-
-    train_df = train_df.iloc[:1000, :]
-    val_df = val_df.iloc[:1000, :]
-
-    # df = df.iloc[:12800, :]
-
-    train_factors = train_df['factor'].tolist()
-    train_expansions = train_df['expansion'].tolist()
-    val_factors = val_df['factor'].tolist()
-    val_expansions = val_df['expansion'].tolist()
-
-    train_dataset = PolynomialDataset(train_factors, tokenizer,
-                                      train_expansions)
-    val_dataset = PolynomialDataset(val_factors, tokenizer, val_expansions)
-
-    train_dataloader = DataLoader(train_dataset, shuffle=True,
-                                  batch_size=batch_size, collate_fn=collate_fn)
-    val_dataloader = DataLoader(val_dataset, shuffle=True,
-                                batch_size=batch_size, collate_fn=collate_fn)
-
     model = CrossAttentionModelFLAX(
         embed_size, hidden_size, tokenizer.vocab_size, num_heads,
-        tokenizer.sos_token_id, bidirectional, use_cache
+        tokenizer.sos_token_id, bidirectional, use_cache, teacher_force_ratio
     )
 
     prng_key = random.PRNGKey(random_state)
@@ -216,6 +221,28 @@ def train_model(args):
     optimized_eval_step = jax.pmap(eval_step, axis_name='num_devices') \
         if ddp else jax.jit(eval_step, static_argnums=0)
 
+    train_path = os.path.join(input_dir, 'training.csv')
+    val_path = os.path.join(input_dir, 'validation.csv')
+
+    train_dataloader, train_dataset = load_data_and_return_dataloader(
+        train_path, tokenizer, batch_size, return_dataset=True
+    )
+    # crreate a fresh iterator
+    train_iter = iter(train_dataloader)
+
+    # model warmup
+    for _ in range(warmup_steps):
+        inputs, targets, _, _ = next(train_iter)
+        _, _, _ = train_step(state, inputs, targets)
+
+    # recreate dataloader for training data
+    train_dataloader = DataLoader(train_dataset, shuffle=True,
+                                  batch_size=batch_size, collate_fn=collate_fn)
+
+    # load validation data
+    val_dataloader = load_data_and_return_dataloader(val_path, tokenizer,
+                                                     batch_size)
+
     best_val_acc = float('-inf')
     for epoch in range(epochs):
 
@@ -241,7 +268,7 @@ def train_model(args):
         # save model state on only one GPU
         if val_acc > best_val_acc and \
                 (not ddp or (ddp and jax.process_index() == 0)):
-            if ddp:
+            if ddp:     # get a single copy of model training state
                 save_state = unreplicate(state)
             else:
                 save_state = state
@@ -250,6 +277,7 @@ def train_model(args):
                 args=ocp.args.StandardSave(save_state)
             )
 
+    # checkpoint manager saves model training checkpoints asynchronously
     checkpoint_manager.wait_until_finished()
 
     # load best performing checkpoint
@@ -259,15 +287,8 @@ def train_model(args):
 
     # load and evaluate test set
     test_path = os.path.join(input_dir, 'test.csv')
-    test_df = pd.read_csv(test_path)
-    test_df = test_df.iloc[:1000, :]
-
-    test_factors = test_df['factor'].tolist()
-    test_expansions = test_df['expansion'].tolist()
-
-    test_dataset = PolynomialDataset(test_factors, tokenizer, test_expansions)
-    test_dataloader = DataLoader(test_dataset, shuffle=True,
-                                 batch_size=batch_size, collate_fn=collate_fn)
+    test_dataloader = load_data_and_return_dataloader(test_path, tokenizer,
+                                                      batch_size)
 
     test_preds, _, test_gt = train_epoch_or_evaluate(
         (model, params), test_dataloader, tokenizer, ddp,
