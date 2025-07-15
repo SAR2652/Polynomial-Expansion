@@ -1,5 +1,6 @@
 import os
 import jax
+import time
 import optax
 import argparse
 import pandas as pd
@@ -233,6 +234,11 @@ def train_model(args):
     # model warmup
     for _ in range(warmup_steps):
         inputs, targets, _, _ = next(train_iter)
+        if ddp:
+            inputs = inputs.reshape(num_devices, -1,
+                                    tokenizer.MAX_SEQUENCE_LENGTH)
+            targets = targets.reshape(num_devices, -1,
+                                      tokenizer.MAX_SEQUENCE_LENGTH)
         _, _, _ = train_step(state, inputs, targets)
 
     # recreate dataloader for training data
@@ -244,6 +250,8 @@ def train_model(args):
                                                      batch_size)
 
     best_val_acc = float('-inf')
+    start = time.perf_counter()
+
     for epoch in range(epochs):
 
         state, running_loss = train_epoch_or_evaluate(
@@ -279,6 +287,15 @@ def train_model(args):
 
     # checkpoint manager saves model training checkpoints asynchronously
     checkpoint_manager.wait_until_finished()
+
+    end = time.perf_counter()
+
+    elapsed = end - start
+    hours = int(elapsed // 3600)
+    minutes = int((elapsed % 3600) // 60)
+    seconds = elapsed % 60
+
+    print(f"Elapsed time: {hours:02d}:{minutes:02d}:{seconds:06.3f}")
 
     # load best performing checkpoint
     step = checkpoint_manager.latest_step()
