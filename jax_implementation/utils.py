@@ -58,6 +58,8 @@ def train_epoch_or_evaluate(
 
         if mode == "train":
             state, loss, grads = step_function(state, inputs, targets)
+            print(running_loss)
+            print(loss)
             running_loss += loss
 
             if (i + 1) % (len(dataloader) // 1) == 0:
