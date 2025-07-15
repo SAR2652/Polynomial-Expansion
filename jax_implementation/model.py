@@ -247,10 +247,10 @@ class DecoderSACAFLAX(nn.Module):
             context_embeds = self.embedding(
                 decoder_tokens[:, :decoder_step]
             )
-            self_attn_output = self.self_attention(embedded, context_embeds,
-                                                   context_embeds,
-                                                   decoder_step,
-                                                   self_attn_kv_cache)
+            self_attn_output, self_attn_kv_cache = self.self_attention(
+                embedded, context_embeds, context_embeds, decoder_step,
+                self_attn_kv_cache
+            )
         else:
             self_attn_output, self_attn_kv_cache = \
                 self.self_attention(embedded, embedded, embedded,
