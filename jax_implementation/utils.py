@@ -67,6 +67,7 @@ def train_epoch_or_evaluate(
             state = update_model(state, grads)
 
         else:
+            print(inputs.shape)
             batch_preds, batch_probs = step_function(model, params, inputs)
 
             batch_preds_np = np.asarray(batch_preds)
