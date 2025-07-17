@@ -62,8 +62,8 @@ def train_epoch_or_evaluate(
 
             else:
                 batch_size = inputs.shape[0]
-                inputs = inputs.reshape(num_devices, batch_size // num_devices,
-                                        batch_size,
+                inputs = inputs.reshape(num_devices, -1,
+                                        batch_size // num_devices,
                                         tokenizer.MAX_SEQUENCE_LENGTH)
 
         if mode == "train":
