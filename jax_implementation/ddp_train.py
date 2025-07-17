@@ -219,7 +219,8 @@ def train_model(args):
     train_step = create_train_step_fn(ddp)
     update_model = jax.pmap(apply_gradient_update, axis_name='num_devices') \
         if ddp else jax.jit(apply_gradient_update)
-    optimized_eval_step = jax.pmap(eval_step, axis_name='num_devices') \
+    optimized_eval_step = jax.pmap(eval_step, axis_name='num_devices',
+                                   static_broadcasted_argnums=0) \
         if ddp else jax.jit(eval_step, static_argnums=0)
 
     train_path = os.path.join(input_dir, 'training.csv')
