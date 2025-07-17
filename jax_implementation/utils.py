@@ -22,6 +22,8 @@ def train_epoch_or_evaluate(
 
     if isinstance(state_or_model, Tuple):
         model, params = state_or_model
+        if ddp:
+            params = jax.device_put_replicated(params, jax.local_devices())
     else:
         state = state_or_model
 
@@ -55,6 +57,11 @@ def train_epoch_or_evaluate(
             if mode != "infer":
                 targets = targets.reshape(num_devices, -1,
                                           tokenizer.MAX_SEQUENCE_LENGTH)
+                
+            if mode in ["eval", "infer"]:
+                replicated_params = jax.device_put_replicated(
+                    params, jax.local_devices()
+                )
 
         if mode == "train":
             state, loss, grads = step_function(state, inputs, targets)
@@ -67,8 +74,13 @@ def train_epoch_or_evaluate(
             state = update_model(state, grads)
 
         else:
-            print(inputs.shape)
-            batch_preds, batch_probs = step_function(model, params, inputs)
+
+            if ddp:
+                batch_preds, batch_probs = step_function(
+                    model, replicated_params, inputs
+                )
+            else:
+                batch_preds, batch_probs = step_function(model, params, inputs)
 
             batch_preds_np = np.asarray(batch_preds)
             batch_probs_np = np.asarray(batch_probs)
