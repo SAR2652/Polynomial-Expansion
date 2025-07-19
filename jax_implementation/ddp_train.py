@@ -262,6 +262,8 @@ def train_model(args):
 
         avg_loss = running_loss / len(train_dataset)
 
+        print(jax.tree_map(lambda x: x.shape, state.params))
+
         val_preds, _, val_gt = train_epoch_or_evaluate(
             (model, state.params), val_dataloader, tokenizer, ddp,
             optimized_eval_step, None, num_devices, "eval",
