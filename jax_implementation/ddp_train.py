@@ -262,8 +262,6 @@ def train_model(args):
 
         avg_loss = running_loss / len(train_dataset)
 
-        print(jax.tree_map(lambda x: x.shape, state.params))
-
         val_preds, _, val_gt = train_epoch_or_evaluate(
             (model, unreplicate(state.params)), val_dataloader, tokenizer, ddp,
             optimized_eval_step, None, num_devices, "eval",
@@ -303,6 +301,7 @@ def train_model(args):
     # load best performing checkpoint
     step = checkpoint_manager.latest_step()
     state = checkpoint_manager.restore(step)
+    print(jax.tree_map(lambda x: x.shape, state.params))
     params = state['params']
 
     # load and evaluate test set
