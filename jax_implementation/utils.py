@@ -26,6 +26,7 @@ def train_epoch_or_evaluate(
         model, params = state_or_model
         if ddp:
             replicated_params = replicate(params)
+            print('Replicated params!')
     else:
         state = state_or_model
 
