@@ -4,6 +4,7 @@ import jax.numpy as jnp
 from typing import Union, Tuple, Literal
 from torch.utils.data import DataLoader
 from flax.training import train_state
+from flax.jax_utils import replicate
 
 
 def eval_step(model, params, inputs):
@@ -24,8 +25,7 @@ def train_epoch_or_evaluate(
     if isinstance(state_or_model, Tuple):
         model, params = state_or_model
         if ddp:
-            replicated_params = jax.device_put_replicated(params,
-                                                          jax.local_devices())
+            replicated_params = replicate(params)
     else:
         state = state_or_model
 
