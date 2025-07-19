@@ -82,6 +82,7 @@ def train_epoch_or_evaluate(
             print(inputs.shape)
 
             if ddp:
+                print('Fwd pass with repliacted params')
                 batch_preds, batch_probs = step_function(
                     model, replicated_params, inputs
                 )
