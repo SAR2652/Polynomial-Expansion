@@ -7,6 +7,7 @@ from flax.training import train_state
 
 
 def eval_step(model, params, inputs):
+    print(inputs.shape)
     logits = model.apply({'params': params}, inputs, targets=None, eval=True)
     probs = jax.nn.softmax(logits, axis=-1)
     preds = jnp.argmax(probs, axis=-1)
