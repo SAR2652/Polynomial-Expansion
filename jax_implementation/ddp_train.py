@@ -265,7 +265,7 @@ def train_model(args):
         print(jax.tree_map(lambda x: x.shape, state.params))
 
         val_preds, _, val_gt = train_epoch_or_evaluate(
-            (model, state.params), val_dataloader, tokenizer, ddp,
+            (model, unreplicate(state.params)), val_dataloader, tokenizer, ddp,
             optimized_eval_step, None, num_devices, "eval",
             tokenizer.MAX_SEQUENCE_LENGTH, tokenizer.vocab_size
         )
