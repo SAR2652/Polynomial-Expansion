@@ -8,7 +8,6 @@ from flax.jax_utils import replicate
 
 
 def eval_step(model, params, inputs):
-    print(inputs.shape)
     logits = model.apply({'params': params}, inputs, targets=None, eval=True)
     probs = jax.nn.softmax(logits, axis=-1)
     preds = jnp.argmax(probs, axis=-1)
@@ -79,10 +78,8 @@ def train_epoch_or_evaluate(
 
         else:
 
-            print(inputs.shape)
-
             if ddp:
-                print('Fwd pass with repliacted params')
+                print('Fwd pass with replicated params')
                 batch_preds, batch_probs = step_function(
                     model, replicated_params, inputs
                 )
