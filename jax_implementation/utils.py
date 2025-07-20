@@ -87,8 +87,12 @@ def train_epoch_or_evaluate(
                 batch_preds, batch_probs = step_function(
                     model, replicated_params, inputs
                 )
+                print('DDP inference')
             else:
                 batch_preds, batch_probs = step_function(model, params, inputs)
+
+            if (i + 1) % (len(dataloader) // 100) == 0:
+                print(f'Processed {i + 1} batches for evaluation')
 
             # Handle DDP output shapes: (num_devices, batch_size_per_device,
             # ...)
