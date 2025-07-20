@@ -103,6 +103,9 @@ def train_epoch_or_evaluate(
                     -1, batch_probs.shape[-2], batch_probs.shape[-1]
                 )
 
+            batch_preds.block_until_ready()
+            batch_probs.block_until_ready()
+
             predictions_list.append(batch_preds)
             probabilities_list.append(batch_probs)
 
