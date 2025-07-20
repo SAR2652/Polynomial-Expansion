@@ -121,7 +121,8 @@ def create_train_step_fn(ddp: bool = False):
         return state, loss, grads
 
     # Compile for performance
-    return jax.pmap(train_step, axis_name='num_devices') if ddp else \
+    return jax.pmap(train_step, axis_name='num_devices',
+                    static_broadcasted_argnums=(2, 3)) if ddp else \
         jax.jit(train_step)
 
 
