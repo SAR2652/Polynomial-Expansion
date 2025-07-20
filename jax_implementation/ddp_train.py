@@ -13,7 +13,8 @@ from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from flax.jax_utils import replicate, unreplicate
 from jax_implementation.model import CrossAttentionModelFLAX
-from jax_implementation.utils import eval_step, train_epoch_or_evaluate
+from jax_implementation.utils import eval_step, train_epoch_or_evaluate, \
+    is_replicated
 from common_utils import compute_equivalence_accuracy, load_tokenizer, \
     collate_fn
 
@@ -267,8 +268,11 @@ def train_model(args):
             update_model, num_devices, "train", epoch, warmup_epochs
         )
 
+        if ddp and is_replicated(state.params):
+            model_params = unreplicate(state.params)
+
         val_preds, _, val_gt = train_epoch_or_evaluate(
-            (model, unreplicate(state.params)), val_dataloader, tokenizer, ddp,
+            (model, model_params), val_dataloader, tokenizer, ddp,
             optimized_eval_step, None, num_devices, "eval"
         )
 
@@ -308,13 +312,16 @@ def train_model(args):
     print(jax.tree_map(lambda x: x.shape, state.params))
     params = state['params']
 
+    if ddp and not is_replicated(params):
+        model_params = replicate(params)
+
     # load and evaluate test set
     test_path = os.path.join(input_dir, 'test.csv')
     test_dataloader = load_data_and_return_dataloader(test_path, tokenizer,
                                                       batch_size)
 
     test_preds, _, test_gt = train_epoch_or_evaluate(
-        (model, params), test_dataloader, tokenizer, ddp,
+        (model, model_params), test_dataloader, tokenizer, ddp,
         optimized_eval_step, None, num_devices, "eval",
     )
 

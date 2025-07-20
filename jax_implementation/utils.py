@@ -14,6 +14,17 @@ def eval_step(model, params, inputs):
     return preds, probs
 
 
+def is_replicated(params):
+    """Checks if the parameters are replicated across devices."""
+    leaves, _ = jax.tree_util.tree_flatten(params)
+    for leaf in leaves:
+        if not hasattr(leaf, "shape"):
+            continue
+        if leaf.shape[0] == jax.local_device_count():
+            return True
+    return False
+
+
 def train_epoch_or_evaluate(
         state_or_model: Union[train_state.TrainState, Tuple],
         dataloader: DataLoader, tokenizer, ddp: bool,
@@ -23,7 +34,7 @@ def train_epoch_or_evaluate(
 
     if isinstance(state_or_model, Tuple):
         model, params = state_or_model
-        if ddp:
+        if ddp and not is_replicated(params):
             replicated_params = replicate(params)
     else:
         state = state_or_model
