@@ -34,11 +34,7 @@ def train_epoch_or_evaluate(
             "function as value in 'train' mode"
 
     if mode in ["eval", "infer"]:
-        predictions = np.empty((0, tokenizer.MAX_SEQUENCE_LENGTH),
-                               dtype=np.int32)
-        probabilities = np.empty((0, tokenizer.MAX_SEQUENCE_LENGTH,
-                                  tokenizer.vocab_size),
-                                 dtype=np.float32)
+        predictions_list, probabilities_list = [], []
 
         if mode == "eval":
             ground_truth = list()
@@ -83,28 +79,28 @@ def train_epoch_or_evaluate(
             else:
                 batch_preds, batch_probs = step_function(model, params, inputs)
 
-            batch_preds_np = np.asarray(batch_preds)
-            batch_probs_np = np.asarray(batch_probs)
-
             # Handle DDP output shapes: (num_devices, batch_size_per_device,
             # ...)
             if ddp:
-                batch_preds_np = batch_preds_np.reshape(
-                    -1, batch_preds_np.shape[-1]
+                batch_preds = batch_preds.reshape(
+                    -1, batch_preds.shape[-1]
                 )
-                batch_probs_np = batch_probs_np.reshape(
-                    -1, batch_probs_np.shape[-2], batch_probs_np.shape[-1]
+                batch_probs = batch_probs.reshape(
+                    -1, batch_probs.shape[-2], batch_probs.shape[-1]
                 )
 
-            predictions = np.concatenate([predictions, batch_preds_np], axis=0)
-            probabilities = np.concatenate([probabilities, batch_probs_np],
-                                           axis=0)
+            predictions_list.append(batch_preds)
+            probabilities_list.append(batch_probs)
+
             if mode == "eval":
                 ground_truth.extend(expansions)
 
     if mode == "train":
         return state, running_loss
     else:
+        predictions = np.asarray(jnp.concatenate(predictions_list, axis=0))
+        probabilities = np.asarray(jnp.concatenate(probabilities_list, axis=0))
+
         return_vals = [predictions, probabilities]
 
         if mode == "eval":
