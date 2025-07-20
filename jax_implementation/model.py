@@ -1,5 +1,4 @@
 import jax
-import random
 from enum import Enum
 import jax.numpy as jnp
 import flax.linen as nn
@@ -311,7 +310,8 @@ class CrossAttentionModelFLAX(nn.Module):
                                        self.vocab_size, self.use_cache)
 
     def __call__(self, inputs: jnp.ndarray, targets: jnp.ndarray = None,
-                 eval: bool = False):
+                 eval: bool = False, curr_epoch: int = None,
+                 warmup_epochs: int = None):
         """
         Args:
             inputs: (B, S) Input token indices.
@@ -363,10 +363,10 @@ class CrossAttentionModelFLAX(nn.Module):
 
             outputs = outputs.at[:, t, :].set(logits)
 
-            use_teacher_forcing = random.random() < self.teacher_force_ratio
-
-            # Teacher forcing during training at all times
-            if not eval and use_teacher_forcing:
+            # Teacher forcing during training at all times for a fixed number
+            # of epochs
+            if not eval and curr_epoch is not None and \
+                    warmup_epochs is not None and curr_epoch < warmup_epochs:
                 if targets is not None:
                     decoder_input = targets[:, t:t+1]  # Use ground truth
                 else:

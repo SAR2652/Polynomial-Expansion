@@ -19,7 +19,7 @@ def train_epoch_or_evaluate(
         dataloader: DataLoader, tokenizer, ddp: bool,
         step_function, update_model=None, num_devices: int = 1,
         mode: Literal["train", "eval", "infer"] = "train",
-        max_seq_len: int = 30, vocab_size: int = 31):
+        curr_epoch: int = None, warmup_epochs: int = None):
 
     if isinstance(state_or_model, Tuple):
         model, params = state_or_model
@@ -34,8 +34,10 @@ def train_epoch_or_evaluate(
             "function as value in 'train' mode"
 
     if mode in ["eval", "infer"]:
-        predictions = np.empty((0, max_seq_len), dtype=np.int32)
-        probabilities = np.empty((0, max_seq_len, vocab_size),
+        predictions = np.empty((0, tokenizer.MAX_SEQUENCE_LENGTH),
+                               dtype=np.int32)
+        probabilities = np.empty((0, tokenizer.MAX_SEQUENCE_LENGTH,
+                                  tokenizer.vocab_size),
                                  dtype=np.float32)
 
         if mode == "eval":
@@ -54,22 +56,19 @@ def train_epoch_or_evaluate(
 
         if ddp:
 
+            inputs = inputs.reshape(num_devices, -1,
+                                    tokenizer.MAX_SEQUENCE_LENGTH)
+
             if mode == "train":
-                inputs = inputs.reshape(num_devices, -1,
-                                        tokenizer.MAX_SEQUENCE_LENGTH)
                 targets = targets.reshape(num_devices, -1,
                                           tokenizer.MAX_SEQUENCE_LENGTH)
 
-            else:
-                # batch_size = inputs.shape[0]
-                inputs = inputs.reshape(num_devices, -1,
-                                        tokenizer.MAX_SEQUENCE_LENGTH)
-
         if mode == "train":
-            state, loss, grads = step_function(state, inputs, targets)
+            state, loss, grads = step_function(state, inputs, targets,
+                                               curr_epoch, warmup_epochs)
             running_loss += loss.mean().item()
 
-            if (i + 1) % (len(dataloader) // 1) == 0:
+            if (i + 1) % (len(dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '
                       f'{running_loss:.4f}')
 

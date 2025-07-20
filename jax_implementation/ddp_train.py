@@ -76,6 +76,9 @@ def get_training_arguments():
     parser.add_argument('--warmup_steps',
                         help='Number of warm up steps before training',
                         type=int, default=10)
+    parser.add_argument('--warmup_epochs',
+                        help='Number of warm up epochs for teacher forcing',
+                        type=int, default=25)
     return parser.parse_args()
 
 
@@ -95,11 +98,13 @@ def create_train_step_fn(ddp: bool = False):
     """
 
     def train_step(state: train_state.TrainState, inputs: jnp.ndarray,
-                   targets: jnp.ndarray
+                   targets: jnp.ndarray, curr_epoch: int, warmup_epochs: int
                    ) -> Tuple[train_state.TrainState, jnp.ndarray, dict]:
 
         def loss_fn(params):
-            logits = state.apply_fn({'params': params}, inputs, targets)
+            logits = state.apply_fn({'params': params}, inputs, targets,
+                                    curr_epoch=curr_epoch,
+                                    warmup_epochs=warmup_epochs)
             loss = optax.softmax_cross_entropy_with_integer_labels(logits,
                                                                    targets)
             return loss.mean(), logits
@@ -181,6 +186,7 @@ def train_model(args):
     bidirectional = args.bidirectional
     teacher_force_ratio = args.teacher_force_ratio
     warmup_steps = args.warmup_steps
+    warmup_epochs = args.warmup_epochs
 
     # performance optimizations
     use_cache = args.use_cache
@@ -257,21 +263,18 @@ def train_model(args):
 
         state, running_loss = train_epoch_or_evaluate(
             state, train_dataloader, tokenizer, ddp, train_step,
-            update_model, num_devices
+            update_model, num_devices, "train", epoch, warmup_epochs
         )
-
-        avg_loss = running_loss / len(train_dataset)
 
         val_preds, _, val_gt = train_epoch_or_evaluate(
             (model, unreplicate(state.params)), val_dataloader, tokenizer, ddp,
-            optimized_eval_step, None, num_devices, "eval",
-            tokenizer.MAX_SEQUENCE_LENGTH, tokenizer.vocab_size
+            optimized_eval_step, None, num_devices, "eval"
         )
 
         val_expansions = tokenizer.batch_decode_expressions(val_preds)
         val_acc = compute_equivalence_accuracy(val_expansions, val_gt)
 
-        print(f"Epoch {epoch + 1}: Avg Training Loss = {avg_loss:.4f}, "
+        print(f"Epoch {epoch + 1}: Training Loss = {running_loss:.4f}, "
               f"Validation Accuracy = {val_acc:.2f}%")
 
         # save model state on only one GPU
@@ -312,7 +315,6 @@ def train_model(args):
     test_preds, _, test_gt = train_epoch_or_evaluate(
         (model, params), test_dataloader, tokenizer, ddp,
         optimized_eval_step, None, num_devices, "eval",
-        tokenizer.MAX_SEQUENCE_LENGTH, tokenizer.vocab_size
     )
 
     test_expansions = tokenizer.batch_decode_expressions(test_preds)
