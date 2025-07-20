@@ -32,7 +32,7 @@ def train_epoch_or_evaluate(
         mode: Literal["train", "eval", "infer"] = "train",
         curr_epoch: int = None, warmup_epochs: int = None):
 
-    if isinstance(state_or_model, Tuple):
+    if isinstance(state_or_model, tuple):
         model, params = state_or_model
         if ddp and not is_replicated(params):
             replicated_params = replicate(params)
