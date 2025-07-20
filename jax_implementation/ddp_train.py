@@ -246,7 +246,7 @@ def train_model(args):
                                     tokenizer.MAX_SEQUENCE_LENGTH)
             targets = targets.reshape(num_devices, -1,
                                       tokenizer.MAX_SEQUENCE_LENGTH)
-        _, _, _ = train_step(state, inputs, targets)
+        _, _, _ = train_step(state, inputs, targets, 0, warmup_epochs)
 
     # recreate dataloader for training data
     train_dataloader = DataLoader(train_dataset, shuffle=True,
