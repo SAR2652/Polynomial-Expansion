@@ -122,7 +122,7 @@ def create_train_step_fn(ddp: bool = False):
 
     # Compile for performance
     return jax.pmap(train_step, axis_name='num_devices',
-                    static_broadcasted_argnums=(2, 3)) if ddp else \
+                    static_broadcasted_argnums=(3, 4)) if ddp else \
         jax.jit(train_step)
 
 
