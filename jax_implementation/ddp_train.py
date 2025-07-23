@@ -268,8 +268,7 @@ def train_model(args):
             update_model, num_devices, "train", epoch, warmup_epochs
         )
 
-        if ddp and is_replicated(state.params):
-            model_params = unreplicate(state.params)
+        model_params = state.params
 
         val_preds, _, val_gt = train_epoch_or_evaluate(
             (model, model_params), val_dataloader, tokenizer, ddp,
