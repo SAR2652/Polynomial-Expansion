@@ -70,7 +70,7 @@ def train_epoch_or_evaluate(
             inputs = inputs.reshape(num_devices, -1,
                                     tokenizer.MAX_SEQUENCE_LENGTH)
 
-            if mode in ["train", "eval"]:
+            if mode == "train":
                 targets = targets.reshape(num_devices, -1,
                                           tokenizer.MAX_SEQUENCE_LENGTH)
 

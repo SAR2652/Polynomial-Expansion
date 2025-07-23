@@ -275,6 +275,9 @@ def train_model(args):
             optimized_eval_step, None, num_devices, "eval"
         )
 
+        print(val_preds.shape)
+        print(val_gt.shape)
+
         # val_expansions = tokenizer.batch_decode_expressions(val_preds)
         # val_acc = compute_equivalence_accuracy(val_expansions, val_gt)
         val_acc = (val_preds == val_gt).sum() * 100 / len(val_gt)
