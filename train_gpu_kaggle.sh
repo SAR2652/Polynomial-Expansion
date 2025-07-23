@@ -15,7 +15,7 @@ python -m jax_implementation.ddp_train \
     --tokenizer_filepath /kaggle/input/polynomialexpansion/tokenizer.joblib \
     --hidden_dim 64 \
     --embed_dim 64 \
-    --epochs 250 \
+    --epochs 50 \
     --batch_size 768 \
     --learning_rate 1e-4 \
     --bidirectional \
