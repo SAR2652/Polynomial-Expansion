@@ -275,12 +275,10 @@ def train_model(args):
             optimized_eval_step, None, num_devices, "eval"
         )
 
-        print(val_preds.shape)
-        print(val_gt.shape)
-
         # val_expansions = tokenizer.batch_decode_expressions(val_preds)
         # val_acc = compute_equivalence_accuracy(val_expansions, val_gt)
-        val_acc = (val_preds == val_gt).sum() * 100 / len(val_gt)
+        val_acc = (val_preds.flatten() == val_gt.flatten()).sum() * 100 / \
+            val_gt.size
 
         print(f"Epoch {epoch + 1}: Training Loss = {running_loss:.4f}, "
               f"Validation Accuracy = {val_acc:.2f}%")
@@ -312,11 +310,13 @@ def train_model(args):
     # load best performing checkpoint
     step = checkpoint_manager.latest_step()
     state = checkpoint_manager.restore(step)
-    print(jax.tree_map(lambda x: x.shape, state.params))
     params = state['params']
+    print(jax.tree_map(lambda x: x.shape, params))
 
     if ddp and not is_replicated(params):
         model_params = replicate(params)
+    else:
+        model_params = params
 
     # load and evaluate test set
     test_path = os.path.join(input_dir, 'test.csv')
