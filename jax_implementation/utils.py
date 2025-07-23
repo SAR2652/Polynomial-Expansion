@@ -110,6 +110,7 @@ def train_epoch_or_evaluate(
             probabilities_list.append(batch_probs)
 
             if mode == "eval":
+                print(targets.shape)
                 ground_truth_list.extend(targets)
 
     if mode == "train":
@@ -124,7 +125,6 @@ def train_epoch_or_evaluate(
         return_vals = [predictions, probabilities]
 
         if mode == "eval":
-            print(ground_truth_list[0].shape)
             ground_truth_jnp = jnp.concatenate(ground_truth_list, axis=0)
             print(ground_truth_jnp.shape)
             ground_truth = np.asarray(jax.device_get(ground_truth_jnp))
