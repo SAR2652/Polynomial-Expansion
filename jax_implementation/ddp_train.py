@@ -330,7 +330,8 @@ def train_model(args):
 
     # test_expansions = tokenizer.batch_decode_expressions(test_preds)
     # test_acc = compute_equivalence_accuracy(test_expansions, test_gt)
-    test_acc = (test_preds == test_gt).sum() * 100 / len(test_gt)
+    test_acc = (test_preds.flatten() == test_gt.flatten()).sum() * 100 / \
+        test_gt.size
 
     print(f"Test Accuracy = {test_acc:.2f}%")
 
