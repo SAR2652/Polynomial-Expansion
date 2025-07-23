@@ -370,8 +370,8 @@ class CrossAttentionModelFLAX(nn.Module):
                 if targets is not None:
                     decoder_input = targets[:, t:t+1]  # Use ground truth
                 else:
-                    print('Training with no targets is not possible!')
-                    exit(1)
+                    raise ValueError("Targets required during training with "
+                                     "teacher forcing.")
 
             else:
                 probs = jax.nn.softmax(logits, axis=-1)
