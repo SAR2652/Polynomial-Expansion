@@ -36,8 +36,10 @@ def train_epoch_or_evaluate(
 
     if isinstance(state_or_model, tuple):
         model, params = state_or_model
+        replicate_flag = False
         if ddp and not is_replicated(params):
             replicated_params = replicate(params)
+            replicate_flag = True
     else:
         state = state_or_model
 
@@ -85,11 +87,10 @@ def train_epoch_or_evaluate(
 
         else:
 
-            if ddp:
+            if ddp and replicate_flag:
                 batch_preds, batch_probs = step_function(
                     model, replicated_params, inputs
                 )
-                print('DDP inference')
             else:
                 batch_preds, batch_probs = step_function(model, params, inputs)
 
