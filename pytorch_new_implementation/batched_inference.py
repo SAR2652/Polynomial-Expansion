@@ -48,9 +48,6 @@ def get_arguments():
     return parser.parse_args()
 
 
-
-
-
 def batched_inference(args):
     input_filepath = args.input_filepath
     ckpt_filepath = args.ckpt_filepath

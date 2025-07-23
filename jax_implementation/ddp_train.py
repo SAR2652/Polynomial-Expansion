@@ -15,8 +15,8 @@ from flax.jax_utils import replicate, unreplicate
 from jax_implementation.model import CrossAttentionModelFLAX
 from jax_implementation.utils import eval_step, train_epoch_or_evaluate, \
     is_replicated
-from common_utils import compute_equivalence_accuracy, load_tokenizer, \
-    collate_fn
+from common_utils import load_tokenizer, collate_fn
+# compute_equivalence_accuracy, score
 
 
 def get_training_arguments():
@@ -275,8 +275,9 @@ def train_model(args):
             optimized_eval_step, None, num_devices, "eval"
         )
 
-        val_expansions = tokenizer.batch_decode_expressions(val_preds)
-        val_acc = compute_equivalence_accuracy(val_expansions, val_gt)
+        # val_expansions = tokenizer.batch_decode_expressions(val_preds)
+        # val_acc = compute_equivalence_accuracy(val_expansions, val_gt)
+        val_acc = (val_preds == val_gt).sum() * 100 / len(val_gt)
 
         print(f"Epoch {epoch + 1}: Training Loss = {running_loss:.4f}, "
               f"Validation Accuracy = {val_acc:.2f}%")
@@ -324,8 +325,9 @@ def train_model(args):
         optimized_eval_step, None, num_devices, "eval",
     )
 
-    test_expansions = tokenizer.batch_decode_expressions(test_preds)
-    test_acc = compute_equivalence_accuracy(test_expansions, test_gt)
+    # test_expansions = tokenizer.batch_decode_expressions(test_preds)
+    # test_acc = compute_equivalence_accuracy(test_expansions, test_gt)
+    test_acc = (test_preds == test_gt).sum() * 100 / len(test_gt)
 
     print(f"Test Accuracy = {test_acc:.2f}%")
 
