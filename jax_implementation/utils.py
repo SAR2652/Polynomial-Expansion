@@ -110,6 +110,7 @@ def train_epoch_or_evaluate(
             probabilities_list.append(batch_probs)
 
             if mode == "eval":
+                targets = targets.reshape(-1, targets.shape[-1])
                 ground_truth_list.extend(targets)
 
     if mode == "train":
