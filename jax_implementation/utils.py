@@ -1,4 +1,5 @@
 import jax
+import functools
 import numpy as np
 import jax.numpy as jnp
 from typing import Union, Tuple, Literal
@@ -7,6 +8,7 @@ from flax.training import train_state
 from flax.jax_utils import replicate
 
 
+@functools.partial(jax.jit, static_argnums=0)
 def eval_step(model, params, inputs):
     logits = model.apply({'params': params}, inputs, targets=None, eval=True)
     probs = jax.nn.softmax(logits, axis=-1)
@@ -103,9 +105,6 @@ def train_epoch_or_evaluate(
                     -1, batch_probs.shape[-2], batch_probs.shape[-1]
                 )
 
-            batch_preds.block_until_ready()
-            batch_probs.block_until_ready()
-
             predictions_list.append(batch_preds)
             probabilities_list.append(batch_probs)
 
@@ -115,8 +114,11 @@ def train_epoch_or_evaluate(
     if mode == "train":
         return state, running_loss
     else:
-        predictions = np.asarray(jnp.concatenate(predictions_list, axis=0))
-        probabilities = np.asarray(jnp.concatenate(probabilities_list, axis=0))
+        predictions_jnp = jnp.concatenate(predictions_list, axis=0)
+        probabilities_jnp = jnp.concatenate(probabilities_list, axis=0)
+
+        predictions = np.asarray(jax.device_get(predictions_jnp))
+        probabilities = np.asarray(jax.device_get(probabilities_jnp))
 
         return_vals = [predictions, probabilities]
 
