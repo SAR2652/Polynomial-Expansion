@@ -19,4 +19,5 @@ python -m jax_implementation.ddp_train \
     --batch_size 768 \
     --learning_rate 1e-4 \
     --bidirectional \
-    --ddp
+    --ddp \
+    --use_cache
