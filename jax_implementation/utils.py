@@ -52,11 +52,11 @@ def train_epoch_or_evaluate(
         predictions_list, probabilities_list = [], []
 
         if mode == "eval":
-            ground_truth = list()
+            ground_truth_list = list()
 
     for i, batch in enumerate(dataloader, 0):
 
-        inputs, targets, _, expansions = batch
+        inputs, targets, _, _ = batch
 
         if mode != "infer":
             assert all(x is not None for x in targets), \
@@ -110,7 +110,7 @@ def train_epoch_or_evaluate(
             probabilities_list.append(batch_probs)
 
             if mode == "eval":
-                ground_truth.extend(expansions)
+                ground_truth_list.extend(targets)
 
     if mode == "train":
         return state, running_loss
@@ -124,6 +124,8 @@ def train_epoch_or_evaluate(
         return_vals = [predictions, probabilities]
 
         if mode == "eval":
+            ground_truth_jnp = jnp.concatenate(ground_truth_list, axis=0)
+            ground_truth = np.asarray(jax.device_get(ground_truth_jnp))
             return_vals.append(ground_truth)
 
         return tuple(return_vals)
