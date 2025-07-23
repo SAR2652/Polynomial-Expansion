@@ -79,9 +79,9 @@ def train_epoch_or_evaluate(
                                                curr_epoch, warmup_epochs)
             running_loss += loss.mean().item()
 
-            if (i + 1) % (len(dataloader) // 100) == 0:
-                print(f'Running Loss after {i + 1} batches = '
-                      f'{running_loss:.4f}')
+            # if (i + 1) % (len(dataloader) // 100) == 0:
+            #     print(f'Running Loss after {i + 1} batches = '
+            #           f'{running_loss:.4f}')
 
             state = update_model(state, grads)
 
