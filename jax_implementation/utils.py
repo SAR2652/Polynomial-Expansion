@@ -156,9 +156,9 @@ def train_epoch_or_evaluate(
                     metric_dict["epoch"] = curr_epoch
 
                 if mode == "train":
-                    save_step = None
-                else:
                     save_step = global_step
+                else:
+                    save_step = None
 
                 logger.log(metric_dict, save_step)
 
