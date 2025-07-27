@@ -308,6 +308,7 @@ class CrossAttentionModelFLAX(nn.Module):
             self.hidden_dim
         self.decoder = DecoderSACAFLAX(hidden_dim, self.num_heads,
                                        self.vocab_size, self.use_cache)
+        self.updated_hidden_dim = hidden_dim
 
     def __call__(self, inputs: jnp.ndarray, targets: jnp.ndarray = None,
                  eval: bool = False, curr_epoch: int = None,
@@ -339,9 +340,9 @@ class CrossAttentionModelFLAX(nn.Module):
             context_tokens = None
             self_attn_kv_cache = {
                 'key': jnp.zeros((batch_size, self.num_heads, target_len,
-                                 self.hidden_dim // self.num_heads)),
+                                 self.updated_hidden_dim // self.num_heads)),
                 'value': jnp.zeros((batch_size, self.num_heads, target_len,
-                                   self.hidden_dim // self.num_heads))
+                                   self.updated_hidden_dim // self.num_heads))
             }
             cross_attn_kv_cache = {
                 'key': None,
