@@ -336,7 +336,7 @@ def train_model(args):
             epoch_time_total = epoch_end - epoch_start
             epoch_train_only_time = val_start - epoch_start
             epoch_val_only_time = epoch_end - val_start
-            wandb.log({
+            logger.log({
                 "epoch_time_total": epoch_time_total,
                 "epoch_train_only_time": epoch_train_only_time,
                 "epoch_val_only_time": epoch_val_only_time,

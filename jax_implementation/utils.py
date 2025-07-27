@@ -86,6 +86,10 @@ def train_epoch_or_evaluate(
         if mode == "train":
             state, loss, grads = step_function(state, inputs_jnp, targets_jnp,
                                                curr_epoch, warmup_epochs)
+
+            if profile:
+                loss = loss.block_until_ready()
+
             running_loss += loss.mean().item()
 
             if (step + 1) % log_interval == 0:
@@ -103,6 +107,10 @@ def train_epoch_or_evaluate(
             else:
                 batch_preds, batch_probs = step_function(model, params,
                                                          inputs_jnp)
+
+            if profile:
+                batch_preds.block_until_ready()
+                batch_probs.block_until_ready()
 
             # print(f'Processed {i + 1} batches for evaluation')
 
@@ -156,16 +164,26 @@ def train_epoch_or_evaluate(
         predictions_jnp = jnp.concatenate(predictions_list, axis=0)
         probabilities_jnp = jnp.concatenate(probabilities_list, axis=0)
 
+        if profile:
+            predictions_jnp.block_until_ready()
+            probabilities_jnp.block_until_ready()
+
         predictions = np.asarray(jax.device_get(predictions_jnp))
         probabilities = np.asarray(jax.device_get(probabilities_jnp))
 
         return_vals = [predictions, probabilities]
 
         if mode == "eval":
+
             ground_truth_jnp = jnp.concatenate(ground_truth_list, axis=0)
             # print(ground_truth_jnp.shape)
+
+            if profile:
+                ground_truth_jnp.block_until_ready()
+
             ground_truth = np.asarray(jax.device_get(ground_truth_jnp))
             # print(ground_truth.shape)
+
             return_vals.append(ground_truth)
 
         return tuple(return_vals)

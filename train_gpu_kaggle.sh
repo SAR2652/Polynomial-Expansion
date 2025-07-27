@@ -20,4 +20,5 @@ python -m jax_implementation.ddp_train \
     --learning_rate 1e-4 \
     --bidirectional \
     --ddp \
-    --use_cache
+    --use_cache \
+    --profile
