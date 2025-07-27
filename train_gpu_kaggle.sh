@@ -21,4 +21,5 @@ python -m jax_implementation.ddp_train \
     --bidirectional \
     --ddp \
     --use_cache \
-    --profile
+    --profile \
+    --disable_wandb
