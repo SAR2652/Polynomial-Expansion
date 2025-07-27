@@ -304,7 +304,7 @@ def train_model(args):
         state, running_loss, global_step = train_epoch_or_evaluate(
             state, train_dataloader, tokenizer, ddp, train_step,
             update_model, num_devices, "train", epoch, warmup_epochs,
-            profile, logger
+            profile, logger, global_step
         )
 
         if profile:
