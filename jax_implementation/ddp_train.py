@@ -292,6 +292,7 @@ def train_model(args):
 
         logger = WandbCSVLogger(log_file, use_wandb)
         logger.start()
+        global_step = 0
     else:
         logger = None
 
@@ -300,7 +301,7 @@ def train_model(args):
         if profile:
             epoch_start = time.perf_counter()
 
-        state, running_loss = train_epoch_or_evaluate(
+        state, running_loss, global_step = train_epoch_or_evaluate(
             state, train_dataloader, tokenizer, ddp, train_step,
             update_model, num_devices, "train", epoch, warmup_epochs,
             profile, logger
@@ -347,7 +348,7 @@ def train_model(args):
                 "epoch_train_only_time": epoch_train_only_time,
                 "epoch_val_only_time": epoch_val_only_time,
                 "epoch": epoch + 1
-            })
+            }, step=global_step)
 
     if profile:
         logger.finish()

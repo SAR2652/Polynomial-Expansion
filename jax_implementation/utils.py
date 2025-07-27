@@ -34,7 +34,7 @@ def train_epoch_or_evaluate(
         step_function, update_model=None, num_devices: int = 1,
         mode: Literal["train", "eval", "infer"] = "train",
         curr_epoch: int = None, warmup_epochs: int = None,
-        profile: bool = False, logger=None):
+        profile: bool = False, logger=None, global_step: int = 0):
 
     if isinstance(state_or_model, tuple):
         model, params = state_or_model
@@ -62,6 +62,9 @@ def train_epoch_or_evaluate(
         token_count = 0
 
     for step, batch in enumerate(dataloader, 0):
+
+        if mode == "train":
+            global_step += 1
 
         inputs, targets, _, _ = batch
 
@@ -149,17 +152,22 @@ def train_epoch_or_evaluate(
                 }
 
                 if mode == "train":
-                    metric_dict["train/loss"] = loss
+                    metric_dict["train/loss"] = loss.mean().item()
                     metric_dict["epoch"] = curr_epoch
 
-                logger.log(metric_dict)
+                if mode == "train":
+                    save_step = None
+                else:
+                    save_step = global_step
+
+                logger.log(metric_dict, save_step)
 
                 # Reset interval counters
                 step_start = time.perf_counter()
                 token_count = 0
 
     if mode == "train":
-        return state, running_loss
+        return state, running_loss, global_step
     else:
         predictions_jnp = jnp.concatenate(predictions_list, axis=0)
         probabilities_jnp = jnp.concatenate(probabilities_list, axis=0)
