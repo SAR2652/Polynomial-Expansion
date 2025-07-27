@@ -183,11 +183,16 @@ def compute_equivalence_accuracy(preds, targets):
 
 
 class WandbCSVLogger:
-    def __init__(self, csv_path: str = "metrics_log.csv"):
+    def __init__(self, csv_path: str = "metrics_log.csv",
+                 use_wandb: bool = False):
         self.csv_path = csv_path
+        self.use_wandb = use_wandb
         self.csv_file = None
         self.csv_writer = None
         self.header_written = False
+
+        if self.use_wandb:
+            self.wandb = wandb
 
     def start(self):
         # Initialize the CSV file
@@ -195,15 +200,15 @@ class WandbCSVLogger:
         self.csv_writer = csv.writer(self.csv_file)
 
     def log(self, metrics: Dict[str, Any], step: int = None):
-        # Log to wandb
-        wandb.log(metrics, step=step)
+        # Log to wandb (optional)
+        if self.use_wandb:
+            self.wandb.log(metrics, step=step)
 
         # Log to CSV
         if not self.header_written:
             self.csv_writer.writerow(["step"] + list(metrics.keys()))
             self.header_written = True
         self.csv_writer.writerow([step] + list(metrics.values()))
-        # flush after every write to ensure data isn't lost
         self.csv_file.flush()
 
     def finish(self):

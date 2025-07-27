@@ -85,6 +85,9 @@ def get_training_arguments():
     parser.add_argument('--profile',
                         help='Profile model training using wandb',
                         action='store_true')
+    parser.add_argument('--disable_wandb',
+                        help='Disable wandb logging',
+                        action='store_true')
     return parser.parse_args()
 
 
@@ -198,6 +201,8 @@ def train_model(args):
     warmup_steps = args.warmup_steps
     warmup_epochs = args.warmup_epochs
     profile = args.profile
+    disable_wandb = args.disable_wandb
+    use_wandb = True if not disable_wandb else False
 
     # performance optimizations
     use_cache = args.use_cache
@@ -272,19 +277,20 @@ def train_model(args):
     start = time.perf_counter()
 
     if profile:
-        wandb.init(
-            project="polynomial-expansion",
-            name="encoder-decoder-training",
-            config={
-                "epochs": epochs,
-                "batch_size": batch_size,
-                "learning_rate": learning_rate,
-                "kv_caching": use_cache,
-                "DDP": ddp
-            }
-        )
+        if use_wandb:
+            wandb.init(
+                project="polynomial-expansion",
+                name="encoder-decoder-training",
+                config={
+                    "epochs": epochs,
+                    "batch_size": batch_size,
+                    "learning_rate": learning_rate,
+                    "kv_caching": use_cache,
+                    "DDP": ddp
+                }
+            )
 
-        logger = WandbCSVLogger(log_file)
+        logger = WandbCSVLogger(log_file, use_wandb)
         logger.start()
     else:
         logger = None
@@ -345,7 +351,9 @@ def train_model(args):
 
     if profile:
         logger.finish()
-        wandb.finish()
+
+        if use_wandb:
+            wandb.finish()
 
     # checkpoint manager saves model training checkpoints asynchronously
     checkpoint_manager.wait_until_finished()
