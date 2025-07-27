@@ -1,11 +1,12 @@
 import jax
+import time
 import functools
 import numpy as np
 import jax.numpy as jnp
-from typing import Union, Tuple, Literal
-from torch.utils.data import DataLoader
 from flax.training import train_state
 from flax.jax_utils import replicate
+from torch.utils.data import DataLoader
+from typing import Union, Tuple, Literal
 
 
 @functools.partial(jax.jit, static_argnums=0)
@@ -32,7 +33,8 @@ def train_epoch_or_evaluate(
         dataloader: DataLoader, tokenizer, ddp: bool,
         step_function, update_model=None, num_devices: int = 1,
         mode: Literal["train", "eval", "infer"] = "train",
-        curr_epoch: int = None, warmup_epochs: int = None):
+        curr_epoch: int = None, warmup_epochs: int = None,
+        profile: bool = False, logger=None):
 
     if isinstance(state_or_model, tuple):
         model, params = state_or_model
@@ -54,7 +56,12 @@ def train_epoch_or_evaluate(
         if mode == "eval":
             ground_truth_list = list()
 
-    for i, batch in enumerate(dataloader, 0):
+    if profile:
+        step_start = time.perf_counter()
+        log_interval = len(dataloader) // 100
+        token_count = 0
+
+    for step, batch in enumerate(dataloader, 0):
 
         inputs, targets, _, _ = batch
 
@@ -62,26 +69,28 @@ def train_epoch_or_evaluate(
             assert all(x is not None for x in targets), \
                 "Targets can be None ONLY in inference mode!"
 
-        inputs = jnp.array(inputs, dtype=jnp.int32)
-        targets = jnp.array(targets, dtype=jnp.int32)
+        inputs_jnp = jnp.array(inputs, dtype=jnp.int32)
+        targets_jnp = jnp.array(targets, dtype=jnp.int32)
 
         if ddp:
 
-            inputs = inputs.reshape(num_devices, -1,
-                                    tokenizer.MAX_SEQUENCE_LENGTH)
+            inputs_jnp = inputs_jnp.reshape(
+                num_devices, -1, tokenizer.MAX_SEQUENCE_LENGTH
+            )
 
             if mode == "train":
-                targets = targets.reshape(num_devices, -1,
-                                          tokenizer.MAX_SEQUENCE_LENGTH)
+                targets_jnp = targets_jnp.reshape(
+                    num_devices, -1, tokenizer.MAX_SEQUENCE_LENGTH
+                )
 
         if mode == "train":
-            state, loss, grads = step_function(state, inputs, targets,
+            state, loss, grads = step_function(state, inputs_jnp, targets_jnp,
                                                curr_epoch, warmup_epochs)
             running_loss += loss.mean().item()
 
-            # if (i + 1) % (len(dataloader) // 100) == 0:
-            #     print(f'Running Loss after {i + 1} batches = '
-            #           f'{running_loss:.4f}')
+            if (step + 1) % log_interval == 0:
+                print(f'Running Loss after {step + 1} batches = '
+                      f'{running_loss:.4f}')
 
             state = update_model(state, grads)
 
@@ -92,7 +101,8 @@ def train_epoch_or_evaluate(
                     model, replicated_params, inputs
                 )
             else:
-                batch_preds, batch_probs = step_function(model, params, inputs)
+                batch_preds, batch_probs = step_function(model, params,
+                                                         inputs_jnp)
 
             # print(f'Processed {i + 1} batches for evaluation')
 
@@ -111,6 +121,34 @@ def train_epoch_or_evaluate(
 
             if mode == "eval":
                 ground_truth_list.append(targets)
+
+        if profile:
+            input_tokens = np.sum(inputs != tokenizer.pad_token_id)
+
+            if mode != "infer":
+                target_tokens = np.sum(targets != tokenizer.pad_token_id)
+
+            token_count += (input_tokens + target_tokens)
+
+            if step % log_interval == 0 and step > 0:
+                elapsed = time.perf_counter() - step_start
+                steps_per_sec = log_interval / elapsed
+                tokens_per_sec = token_count / elapsed
+
+                metric_dict = {
+                    "steps/sec": steps_per_sec,
+                    "tokens/sec": tokens_per_sec,
+                }
+
+                if mode == "train":
+                    metric_dict["train/loss"] = loss
+                    metric_dict["epoch"] = curr_epoch
+
+                logger.log(metric_dict)
+
+                # Reset interval counters
+                step_start = time.perf_counter()
+                token_count = 0
 
     if mode == "train":
         return state, running_loss

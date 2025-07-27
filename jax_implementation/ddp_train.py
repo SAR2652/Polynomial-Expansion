@@ -2,6 +2,7 @@ import os
 import jax
 import time
 import optax
+import wandb
 import argparse
 import pandas as pd
 from jax import random
@@ -13,9 +14,10 @@ from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from flax.jax_utils import replicate, unreplicate
 from jax_implementation.model import CrossAttentionModelFLAX
+from common_utils import load_tokenizer, collate_fn, WandbCSVLogger
 from jax_implementation.utils import eval_step, train_epoch_or_evaluate, \
     is_replicated
-from common_utils import load_tokenizer, collate_fn
+
 # compute_equivalence_accuracy, score
 
 
@@ -80,9 +82,13 @@ def get_training_arguments():
     parser.add_argument('--warmup_epochs',
                         help='Number of warm up epochs for teacher forcing',
                         type=int, default=25)
+    parser.add_argument('--profile',
+                        help='Profile model training using wandb',
+                        action='store_true')
     return parser.parse_args()
 
 
+@jax.jit
 def apply_gradient_update(state, grads):
     return state.apply_gradients(grads=grads)
 
@@ -171,9 +177,11 @@ def train_model(args):
     input_dir = args.input_dir
     output_dir = args.output_dir
     ckpt_dir = os.path.join(output_dir, args.ckpt_dir)
-    for directory in [output_dir, ckpt_dir]:
+    logs_dir = os.path.join(output_dir, 'logs')
+    for directory in [output_dir, ckpt_dir, logs_dir]:
         os.makedirs(directory, exist_ok=True)
     ckpt_dir = os.path.abspath(ckpt_dir)
+    log_file = os.path.join(logs_dir, 'metrics_log.csv')
     tokenizer_filepath = args.tokenizer_filepath
     tokenizer = load_tokenizer(tokenizer_filepath)
 
@@ -189,6 +197,7 @@ def train_model(args):
     teacher_force_ratio = args.teacher_force_ratio
     warmup_steps = args.warmup_steps
     warmup_epochs = args.warmup_epochs
+    profile = args.profile
 
     # performance optimizations
     use_cache = args.use_cache
@@ -226,7 +235,7 @@ def train_model(args):
     # initialize model training/evaluation and update functions
     train_step = create_train_step_fn(ddp)
     update_model = jax.pmap(apply_gradient_update, axis_name='num_devices') \
-        if ddp else jax.jit(apply_gradient_update)
+        if ddp else apply_gradient_update
     optimized_eval_step = jax.pmap(eval_step, axis_name='num_devices',
                                    static_broadcasted_argnums=(0,)) \
         if ddp else eval_step
@@ -237,7 +246,8 @@ def train_model(args):
     train_dataloader, train_dataset = load_data_and_return_dataloader(
         train_path, tokenizer, batch_size, return_dataset=True
     )
-    # crreate a fresh iterator
+
+    # create a fresh iterator
     train_iter = iter(train_dataloader)
 
     # model warmup
@@ -261,18 +271,44 @@ def train_model(args):
     best_val_acc = float('-inf')
     start = time.perf_counter()
 
+    if profile:
+        wandb.init(
+            project="polynomial-expansion",
+            name="encoder-decoder-training",
+            config={
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "kv_caching": use_cache,
+                "DDP": ddp
+            }
+        )
+
+        logger = WandbCSVLogger(log_file)
+        logger.start()
+    else:
+        logger = None
+
     for epoch in range(epochs):
+
+        if profile:
+            epoch_start = time.perf_counter()
 
         state, running_loss = train_epoch_or_evaluate(
             state, train_dataloader, tokenizer, ddp, train_step,
-            update_model, num_devices, "train", epoch, warmup_epochs
+            update_model, num_devices, "train", epoch, warmup_epochs,
+            profile, logger
         )
+
+        if profile:
+            val_start = time.perf_counter()
 
         model_params = state.params
 
         val_preds, _, val_gt = train_epoch_or_evaluate(
             (model, model_params), val_dataloader, tokenizer, ddp,
-            optimized_eval_step, None, num_devices, "eval"
+            optimized_eval_step, None, num_devices, "eval",
+            profile=profile, logger=logger
         )
 
         # val_expansions = tokenizer.batch_decode_expressions(val_preds)
@@ -294,6 +330,22 @@ def train_model(args):
                 epoch + 1,
                 args=ocp.args.StandardSave(save_state)
             )
+
+        if profile:
+            epoch_end = time.perf_counter()
+            epoch_time_total = epoch_end - epoch_start
+            epoch_train_only_time = val_start - epoch_start
+            epoch_val_only_time = epoch_end - val_start
+            wandb.log({
+                "epoch_time_total": epoch_time_total,
+                "epoch_train_only_time": epoch_train_only_time,
+                "epoch_val_only_time": epoch_val_only_time,
+                "epoch": epoch + 1
+            })
+
+    if profile:
+        logger.finish()
+        wandb.finish()
 
     # checkpoint manager saves model training checkpoints asynchronously
     checkpoint_manager.wait_until_finished()

@@ -1,8 +1,10 @@
-import joblib   # type: ignore
+import csv
+import wandb
+import joblib
 import pickle
 import numpy as np
-from typing import Tuple, Iterable
 from sympy import simplify, sympify
+from typing import Tuple, Iterable, Dict, Any
 
 
 def load_file(file_path: str) -> Tuple[Tuple[str], Tuple[str]]:
@@ -178,3 +180,32 @@ def compute_equivalence_accuracy(preds, targets):
     "same length"
     correct = sum(is_equivalent(p, t) for p, t in zip(preds, targets))
     return 100.0 * correct / len(preds)
+
+
+class WandbCSVLogger:
+    def __init__(self, csv_path: str = "metrics_log.csv"):
+        self.csv_path = csv_path
+        self.csv_file = None
+        self.csv_writer = None
+        self.header_written = False
+
+    def start(self):
+        # Initialize the CSV file
+        self.csv_file = open(self.csv_path, mode="w", newline="")
+        self.csv_writer = csv.writer(self.csv_file)
+
+    def log(self, metrics: Dict[str, Any], step: int = None):
+        # Log to wandb
+        wandb.log(metrics, step=step)
+
+        # Log to CSV
+        if not self.header_written:
+            self.csv_writer.writerow(["step"] + list(metrics.keys()))
+            self.header_written = True
+        self.csv_writer.writerow([step] + list(metrics.values()))
+        # flush after every write to ensure data isn't lost
+        self.csv_file.flush()
+
+    def finish(self):
+        if self.csv_file:
+            self.csv_file.close()
