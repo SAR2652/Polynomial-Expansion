@@ -371,10 +371,13 @@ def train_model(args):
     step = checkpoint_manager.latest_step()
     state = checkpoint_manager.restore(step)
     params = state['params']
-    print(jax.tree_map(lambda x: x.shape, params))
+    print(f'Model Parameters:\n'
+          f'{jax.tree_map(lambda x: x.shape, params)}')
 
     if ddp and not is_replicated(params):
         model_params = replicate(params)
+        print(f'Model Parameters after DDP:\n'
+              f'{jax.tree_map(lambda x: x.shape, model_params)}')
     else:
         model_params = params
 
