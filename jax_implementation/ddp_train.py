@@ -133,7 +133,7 @@ def create_train_step_fn(ddp: bool = False):
     # Compile for performance
     return jax.pmap(train_step, axis_name='num_devices',
                     static_broadcasted_argnums=(3, 4)) if ddp else \
-        jax.jit(train_step)
+        jax.jit(train_step, static_argnums=(3, 4))
 
 
 def init_train_state(model, random_key, batch_size: int, seq_len: int,
