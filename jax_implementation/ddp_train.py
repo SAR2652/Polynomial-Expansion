@@ -16,7 +16,7 @@ from flax.jax_utils import replicate, unreplicate
 from jax_implementation.model import CrossAttentionModelFLAX
 from common_utils import load_tokenizer, collate_fn, WandbCSVLogger
 from jax_implementation.utils import eval_step, train_epoch_or_evaluate, \
-    is_replicated
+    is_replicated, init_train_state
 
 # compute_equivalence_accuracy, score
 
@@ -134,26 +134,6 @@ def create_train_step_fn(ddp: bool = False):
     return jax.pmap(train_step, axis_name='num_devices',
                     static_broadcasted_argnums=(3, 4)) if ddp else \
         jax.jit(train_step, static_argnums=(3, 4))
-
-
-def init_train_state(model, random_key, batch_size: int, seq_len: int,
-                     learning_rate: float) -> train_state.TrainState:
-
-    dummy_inputs = jnp.ones((batch_size, seq_len),
-                            dtype=jnp.int32)
-    dummy_targets = jnp.ones((batch_size, seq_len),
-                             dtype=jnp.int32)
-
-    # Initialize the Model
-    variables = model.init(random_key, dummy_inputs, dummy_targets)
-    # Create the optimizer
-    optimizer = optax.adam(learning_rate)
-    # Create a State
-    return train_state.TrainState.create(
-        apply_fn=model.apply,
-        tx=optimizer,
-        params=variables['params']
-    )
 
 
 def load_data_and_return_dataloader(filepath, tokenizer, batch_size,

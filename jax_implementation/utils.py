@@ -1,5 +1,6 @@
 import jax
 import time
+import optax
 import functools
 import numpy as np
 import jax.numpy as jnp
@@ -26,6 +27,26 @@ def is_replicated(params):
         if leaf.shape[0] == jax.local_device_count():
             return True
     return False
+
+
+def init_train_state(model, random_key, batch_size: int = 1, seq_len: int = 30,
+                     learning_rate: float = 0.001) -> train_state.TrainState:
+
+    dummy_inputs = jnp.ones((batch_size, seq_len),
+                            dtype=jnp.int32)
+    dummy_targets = jnp.ones((batch_size, seq_len),
+                             dtype=jnp.int32)
+
+    # Initialize the Model
+    variables = model.init(random_key, dummy_inputs, dummy_targets)
+    # Create the optimizer
+    optimizer = optax.adam(learning_rate)
+    # Create a State
+    return train_state.TrainState.create(
+        apply_fn=model.apply,
+        tx=optimizer,
+        params=variables['params']
+    )
 
 
 def train_epoch_or_evaluate(

@@ -10,3 +10,5 @@ pytorch_tests/
 jax_tests/
 .DS_Store
 .vscode
+*.ipynb
+*.pdf
