@@ -4,22 +4,23 @@ import argparse
 import numpy as np
 import pandas as pd
 import jax.numpy as jnp
+import jax.random as random
+import orbax.checkpoint as ocp
 from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from common_utils import load_tokenizer, collate_fn
+from jax_implementation.utils import init_train_state
 from jax_implementation.model import CrossAttentionModelFLAX
-from orbax.checkpoint import PyTreeCheckpointer, CheckpointManager
 
 
 def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_filepath',
                         help='CSV file containing validation data',
-                        type=str, default='./validation.csv')
+                        type=str, default='./output/test.csv')
     parser.add_argument('--ckpt_dir',
                         help='Model checkpoint filepath',
-                        type=str, default='./output/results/best_model_saca'
-                        '_bidirect_217')
+                        type=str, default='./output/ddp_kv/output/checkpoints')
     parser.add_argument('--embed_dim',
                         help='Dimension of Embeddings',
                         type=int, default=64)
@@ -43,7 +44,7 @@ def get_arguments():
                         help='Number of Attention Heads',
                         type=int, default=4)
     parser.add_argument('--teacher_force_ratio',
-                        helkp='Teacher force ratio',
+                        help='Teacher force ratio',
                         type=float, default=0.5)
     parser.add_argument('--use_cache',
                         help='Use KV Caching',
@@ -54,6 +55,7 @@ def get_arguments():
 def batched_inference(args):
     input_filepath = args.input_filepath
     ckpt_dir = os.path.abspath(args.ckpt_dir)
+    random_state = args.random_state
     embed_dim = args.embed_dim
     hidden_dim = args.hidden_dim
     batch_size = args.batch_size
@@ -68,27 +70,37 @@ def batched_inference(args):
     # key = jax.random.PRNGKey(args.random_state)
 
     df = pd.read_csv(input_filepath)
-    # df = df.iloc[10:15, :]  # Using a subset of the data
+    df = df.iloc[10:15, :]  # Using a subset of the data
 
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
 
-    dataset = PolynomialDataset(factors, expansions, tokenizer)
+    dataset = PolynomialDataset(factors, tokenizer, expansions)
     dataloader = DataLoader(dataset, shuffle=False,
                             batch_size=batch_size, collate_fn=collate_fn)
 
-    # Initialize the Flax model
+    # initialize checkpoint manager
+    checkpoint_manager = ocp.CheckpointManager(ckpt_dir)
+    step = checkpoint_manager.latest_step()
+
     model = CrossAttentionModelFLAX(
         embed_dim, hidden_dim, tokenizer.vocab_size, num_heads,
-        tokenizer.sos_token_id, bidirectional, teacher_force_ratio, use_cache
+        tokenizer.sos_token_id, bidirectional, use_cache, teacher_force_ratio
     )
 
-    orbax_checkpointer = PyTreeCheckpointer()
-    checkpoint_manager = CheckpointManager(ckpt_dir, orbax_checkpointer)
-    step = checkpoint_manager.latest_step()
-    checkpoint = checkpoint_manager.restore(step)
-    state = checkpoint['state']
-    params = state['params']
+    # initialize random key and training state
+    prng_key = random.PRNGKey(random_state)
+    train_state = init_train_state(model, prng_key,
+                                   seq_len=tokenizer.MAX_SEQUENCE_LENGTH)
+
+    # get PyTree object to load checkpoint
+    abstract_state = jax.tree_util.tree_map(
+        ocp.utils.to_shape_dtype_struct, train_state
+    )
+    state = checkpoint_manager.restore(
+        step, args=ocp.args.StandardRestore(abstract_state)
+    )
+    params = state.params
 
     expressions = []
 

@@ -75,18 +75,26 @@ def quantize_tensor(tensor: jnp.ndarray, num_bits=8):
     }
 
 
-def recursively_quantize(params: Union[dict, FrozenDict]) -> dict:
-    """Recursively quantizes all JAX float32 arrays in a (Frozen)Dict."""
+def recursively_quantize(params: Union[dict, FrozenDict], parent_key=''
+                         ) -> dict:
+    """Recursively quantizes all JAX float32 arrays except embeddings."""
     quantized_params = {}
 
     for k, v in params.items():
+        full_key = f"{parent_key}/{k}" if parent_key else k
+
         if isinstance(v, (dict, FrozenDict)):
-            quantized_params[k] = recursively_quantize(v)
+            quantized_params[k] = recursively_quantize(v, full_key)
+
         elif isinstance(v, jnp.ndarray) and v.dtype == jnp.float32:
-            quantized_params[k] = quantize_tensor(v)
+            if "embedding" in full_key.lower():
+                # Keep original embeddings (will be written as float16 later)
+                quantized_params[k] = v
+            else:
+                # Quantize other weights
+                quantized_params[k] = quantize_tensor(v)
         else:
-            # Copy non-float32 values as-is (e.g., already quantized or config
-            # metadata)
+            # Copy non-float32 values as-is
             quantized_params[k] = v
 
     return quantized_params
@@ -108,7 +116,7 @@ def export_quantized_params_to_bin_json(quantized_params, output_dir):
 
     flat_params = flatten_dict(quantized_params)
 
-    print(f'Flat params = {flat_params}')
+    # print(f'Flat params = {flat_params}')
 
     # We want to group keys by prefix up to leaf dictionary, so filter keys by
     # removing 'quantized', 'scale', 'zero_point'
@@ -124,7 +132,7 @@ def export_quantized_params_to_bin_json(quantized_params, output_dir):
             leaves[prefix_key] = {}
         leaves[prefix_key][last] = v
 
-    print(f'Leaves = {leaves}')
+    # print(f'Leaves = {leaves}')
 
     # Prepare binary buffer and metadata
     bin_data = bytearray()
@@ -132,28 +140,50 @@ def export_quantized_params_to_bin_json(quantized_params, output_dir):
     offset = 0
 
     for leaf_name, leaf_data in leaves.items():
-        quantized = leaf_data['quantized']
-        scale = leaf_data['scale']
-        zero_point = leaf_data['zero_point']
 
-        # Convert JAX array to numpy int8
-        quantized_np = np.array(quantized).flatten().astype(np.int8)
-        size = quantized_np.size
+        if "embedding" in leaf_name.lower():
+            # print(f"Leaf Data = {leaf_data}")
+            # Keep embeddings in float16 for better precision
+            raw_np = np.array(leaf_data['embedding']).flatten() \
+                .astype(np.float16)
+            size = raw_np.size
 
-        # Append bytes
-        bin_data += quantized_np.tobytes()
+            # Append raw float16 bytes
+            bin_data += raw_np.tobytes()
 
-        # Save metadata for this tensor
-        metadata[leaf_name] = {
-            'shape': list(quantized.shape),
-            'scale': float(scale),
-            'zero_point': int(zero_point),
-            'offset': offset,
-            'size': size
-        }
-        offset += size
+            # Save metadata
+            metadata[leaf_name] = {
+                'shape': list(leaf_data['embedding'].shape),
+                'dtype': "float16",
+                'offset': offset,
+                'size': size
+            }
 
-    print(f'Metadata = {metadata}')
+            offset += raw_np.nbytes
+
+        else:
+            # Quantize everything else as int8
+            quantized = leaf_data['quantized']
+            scale = leaf_data['scale']
+            zero_point = leaf_data['zero_point']
+
+            quantized_np = np.array(quantized).flatten().astype(np.int8)
+            size = quantized_np.size
+
+            bin_data += quantized_np.tobytes()
+
+            metadata[leaf_name] = {
+                'shape': list(quantized.shape),
+                'scale': float(scale),
+                'zero_point': int(zero_point),
+                'dtype': "int8",
+                'offset': offset,
+                'size': size
+            }
+
+            offset += quantized_np.nbytes
+
+    # print(f'Metadata = {metadata}')
 
     # Write binary file
     with open(os.path.join(output_dir, 'weights.bin'), 'wb') as f:
