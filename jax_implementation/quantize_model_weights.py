@@ -221,10 +221,15 @@ def quantize_weights_to_int8(args):
         tokenizer.sos_token_id, bidirectional
     )
 
+
     # initialize random key and training state
     prng_key = random.PRNGKey(random_state)
+
     train_state = init_train_state(model, prng_key,
                                    seq_len=tokenizer.MAX_SEQUENCE_LENGTH)
+    
+    
+    
 
     # get PyTree object to load checkpoint
     abstract_state = jax.tree_util.tree_map(

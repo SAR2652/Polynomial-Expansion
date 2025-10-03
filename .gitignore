@@ -12,3 +12,4 @@ jax_tests/
 .vscode
 *.ipynb
 *.pdf
+inference_server_cutlass/load_weights

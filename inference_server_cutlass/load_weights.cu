@@ -15,14 +15,14 @@ struct TensorInfo {
 int main() {
     // Load metadata
     nlohmann::json meta;
-    std::ifstream jf("metadata.json");
+    std::ifstream jf("../output/metadata.json");
     if (!jf) {
         std::cerr << "Failed to open metadata.json\n";
         return 1;
     }
     jf >> meta;
 
-    std::ifstream bin("weights.bin", std::ios::binary);
+    std::ifstream bin("../output/weights.bin", std::ios::binary);
     if (!bin) {
         std::cerr << "Failed to open weights.bin\n";
         return 1;
