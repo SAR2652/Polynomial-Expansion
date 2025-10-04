@@ -41,12 +41,24 @@ def get_arguments():
     parser.add_argument('--bidirectional',
                         action='store_true',
                         help='Use bidirectional model')
+    parser.add_argument('--quantization_dtype',
+                        type=str, default='int8',
+                        help='Use float16 quantization instead of int8 (except'
+                        ' for embeddings)')
     return parser.parse_args()
 
 
-def quantize_tensor(tensor: jnp.ndarray, num_bits=8):
+def quantize_tensor(tensor: jnp.ndarray, num_bits: int = 8,
+                    dtype: str = 'int8'):
     """Quantizes a float32 JAX tensor to int8 using uniform affine
     quantization."""
+
+    if dtype == 'float16':
+        return {
+            'quantized': tensor.astype(jnp.float16),
+            'dtype': 'float16'
+        }
+
     qmin = -2 ** (num_bits - 1)
     qmax = 2 ** (num_bits - 1) - 1
 
@@ -75,8 +87,8 @@ def quantize_tensor(tensor: jnp.ndarray, num_bits=8):
     }
 
 
-def recursively_quantize(params: Union[dict, FrozenDict], parent_key=''
-                         ) -> dict:
+def recursively_quantize(params: Union[dict, FrozenDict], parent_key: str = '',
+                         dtype: str = 'int8') -> dict:
     """Recursively quantizes all JAX float32 arrays except embeddings."""
     quantized_params = {}
 
@@ -84,7 +96,7 @@ def recursively_quantize(params: Union[dict, FrozenDict], parent_key=''
         full_key = f"{parent_key}/{k}" if parent_key else k
 
         if isinstance(v, (dict, FrozenDict)):
-            quantized_params[k] = recursively_quantize(v, full_key)
+            quantized_params[k] = recursively_quantize(v, full_key, dtype)
 
         elif isinstance(v, jnp.ndarray) and v.dtype == jnp.float32:
             if "embedding" in full_key.lower():
@@ -92,7 +104,7 @@ def recursively_quantize(params: Union[dict, FrozenDict], parent_key=''
                 quantized_params[k] = v
             else:
                 # Quantize other weights
-                quantized_params[k] = quantize_tensor(v)
+                quantized_params[k] = quantize_tensor(v, dtype=dtype)
         else:
             # Copy non-float32 values as-is
             quantized_params[k] = v
@@ -100,7 +112,8 @@ def recursively_quantize(params: Union[dict, FrozenDict], parent_key=''
     return quantized_params
 
 
-def export_quantized_params_to_bin_json(quantized_params, output_dir):
+def export_quantized_params_to_bin_json(quantized_params: dict,
+                                        output_dir: str, dtype: str):
     os.makedirs(output_dir, exist_ok=True)
 
     # Flatten the nested dict to key path -> leaf dict
@@ -142,55 +155,46 @@ def export_quantized_params_to_bin_json(quantized_params, output_dir):
     for leaf_name, leaf_data in leaves.items():
 
         if "embedding" in leaf_name.lower():
-            # print(f"Leaf Data = {leaf_data}")
-            # Keep embeddings in float16 for better precision
+            # Keep embeddings in float16
             raw_np = np.array(leaf_data['embedding']).flatten() \
                 .astype(np.float16)
-            size = raw_np.size
-
-            # Append raw float16 bytes
-            bin_data += raw_np.tobytes()
-
-            # Save metadata
-            metadata[leaf_name] = {
-                'shape': list(leaf_data['embedding'].shape),
-                'dtype': "float16",
-                'offset': offset,
-                'size': size
-            }
-
-            offset += raw_np.nbytes
-
+            dtype = "float16"
         else:
-            # Quantize everything else as int8
             quantized = leaf_data['quantized']
-            scale = leaf_data['scale']
-            zero_point = leaf_data['zero_point']
+            dtype = leaf_data.get('dtype', 'int8')
 
-            quantized_np = np.array(quantized).flatten().astype(np.int8)
-            size = quantized_np.size
+            if dtype == "float16":
+                raw_np = np.array(quantized).flatten().astype(np.float16)
+            else:
+                raw_np = np.array(quantized).flatten().astype(np.int8)
 
-            bin_data += quantized_np.tobytes()
+        size = raw_np.size
+        bin_data += raw_np.tobytes()
 
-            metadata[leaf_name] = {
-                'shape': list(quantized.shape),
-                'scale': float(scale),
-                'zero_point': int(zero_point),
-                'dtype': "int8",
-                'offset': offset,
-                'size': size
-            }
+        metadata_entry = {
+            'shape': list(quantized.shape),
+            'dtype': dtype,
+            'offset': offset,
+            'size': size
+        }
 
-            offset += quantized_np.nbytes
+        if dtype == "int8":
+            metadata_entry.update({
+                'scale': float(leaf_data['scale']),
+                'zero_point': int(leaf_data['zero_point'])
+            })
+
+        metadata[leaf_name] = metadata_entry
+        offset += raw_np.nbytes
 
     # print(f'Metadata = {metadata}')
 
     # Write binary file
-    with open(os.path.join(output_dir, 'weights.bin'), 'wb') as f:
+    with open(os.path.join(output_dir, f'weights_{dtype}.bin'), 'wb') as f:
         f.write(bin_data)
 
     # Write metadata JSON
-    with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
+    with open(os.path.join(output_dir, f'metadata_{dtype}.json'), 'w') as f:
         json.dump(metadata, f, indent=4)
 
     print(f"Saved {len(leaves)} tensors to {output_dir}/weights.bin and "
@@ -204,6 +208,7 @@ def quantize_weights_to_int8(args):
     ckpt_dir = os.path.abspath(ckpt_dir)
     tokenizer_filepath = args.tokenizer_filepath
     tokenizer = load_tokenizer(tokenizer_filepath)
+    quantization_dtype = args.quantization_dtype
 
     # hyperparameters
     random_state = args.random_state
@@ -221,15 +226,11 @@ def quantize_weights_to_int8(args):
         tokenizer.sos_token_id, bidirectional
     )
 
-
     # initialize random key and training state
     prng_key = random.PRNGKey(random_state)
 
     train_state = init_train_state(model, prng_key,
                                    seq_len=tokenizer.MAX_SEQUENCE_LENGTH)
-    
-    
-    
 
     # get PyTree object to load checkpoint
     abstract_state = jax.tree_util.tree_map(
@@ -241,8 +242,10 @@ def quantize_weights_to_int8(args):
     params = state.params
 
     # quantize parameters and export to JSON & BIN files
-    quantized_params = recursively_quantize(params)
-    export_quantized_params_to_bin_json(quantized_params, output_dir)
+    quantized_params = recursively_quantize(params,
+                                            dtype=quantization_dtype)
+    export_quantized_params_to_bin_json(quantized_params, output_dir,
+                                        quantization_dtype)
 
 
 def main():
