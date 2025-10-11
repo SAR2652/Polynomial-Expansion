@@ -13,3 +13,17 @@ jax_tests/
 *.ipynb
 *.pdf
 inference_server_cutlass/load_weights
+
+# CMake build directory
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Compiled binaries
+*.o
+*.obj
+*.so
+*.dll
+*.exe
