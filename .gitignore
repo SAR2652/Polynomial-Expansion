@@ -5,14 +5,13 @@ data/
 output/
 models/
 pat.txt
-tests/
 pytorch_tests/
 jax_tests/
 .DS_Store
 .vscode
 *.ipynb
 *.pdf
-inference_server_cutlass/load_weights
+
 
 # CMake build directory
 build/
@@ -27,3 +26,4 @@ Makefile
 *.so
 *.dll
 *.exe
+.cache

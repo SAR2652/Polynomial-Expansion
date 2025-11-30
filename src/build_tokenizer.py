@@ -1,7 +1,7 @@
 import os
-import joblib   # type: ignore
+import joblib
 import argparse
-from common_utils import load_file, Tokenizer
+from src.common_utils import load_file, Tokenizer
 
 
 def get_vocabulary_arguments():

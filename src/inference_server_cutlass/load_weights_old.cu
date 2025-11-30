@@ -8,21 +8,22 @@ struct TensorInfo {
     std::string dtype;
     size_t offset;
     size_t size;
-    float scale;
-    int zero_point;
+    float scale = 1.0f;
+    int zero_point = 0;
 };
 
 int main() {
+
     // Load metadata
     nlohmann::json meta;
-    std::ifstream jf("../output/metadata.json");
+    std::ifstream jf("../../output/metadata.json");
     if (!jf) {
         std::cerr << "Failed to open metadata.json\n";
         return 1;
     }
     jf >> meta;
 
-    std::ifstream bin("../output/weights.bin", std::ios::binary);
+    std::ifstream bin("../../output/weights.bin", std::ios::binary);
     if (!bin) {
         std::cerr << "Failed to open weights.bin\n";
         return 1;
@@ -72,6 +73,7 @@ int main() {
     }
 
     // ---- Use the weights here (in real inference code) ----
+
 
     // Free all allocated device memory
     for (void* ptr : device_ptrs) {
