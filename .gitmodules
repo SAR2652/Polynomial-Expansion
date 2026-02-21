@@ -1,6 +1,3 @@
-[submodule "external/cutlass"]
-	path = external/cutlass
-	url = https://github.com/NVIDIA/cutlass.git
 [submodule "external/googletest"]
 	path = external/googletest
 	url = https://github.com/google/googletest.git
