@@ -122,7 +122,7 @@ class MultiHeadAttentionFLAX(nn.Module):
         # Encoder outputs are constant, hece calculate K/V only once and
         # cache them for later use
         # 2. Attention mode is "self"
-        # Self Attention occurse between current token and all previous tokens
+        # Self Attention occurs between current token and all previous tokens
 
         if self.mode in [Mode.SELF, Mode.NONE] or \
             (self.mode == Mode.CROSS and isinstance(kv_cache, dict) and

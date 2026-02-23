@@ -43,7 +43,7 @@ def get_arguments():
     return parser.parse_args()
 
 
-def quantize_tensor(tensor: jnp.ndarray, num_bits=8):
+def quantize_tensor_int8(tensor: jnp.ndarray, num_bits=8):
     """Quantizes a float32 JAX tensor to int8 using uniform affine
     quantization."""
     qmin = -2 ** (num_bits - 1)
@@ -74,38 +74,41 @@ def quantize_tensor(tensor: jnp.ndarray, num_bits=8):
     }
 
 
-def quantize_tensor_to_int32(tensor: jnp.ndarray):
+def quantize_tensor_int32(tensor: jnp.ndarray):
     """Quantizes a float32 JAX tensor to int32 using uniform affine
-    quantization."""
-    # qmin = -2 ** 31
-    # qmax = 2 ** 31 - 1
-    # For int32, qmax - qmin = 2**32 - 1 = 4,294,967,295, which is too large
-    # for float32 precision in JAX's JIT context. This triggers an overflow
-    # during the division.
+    quantization (per-tensor). This implementation avoids integer overflow
+    by performing range arithmetic in floating point and only casting at the end.
+    """
+    # int32 range constants as Python ints
+    qmin_int = -2 ** 31
+    qmax_int = 2 ** 31 - 1
 
-    # Use a safe range like qmin = -2**15, qmax = 2**15 - 1
-    # (i.e., int16 range) for scale
+    # Convert to JAX-friendly floats for range arithmetic
+    qmin = jnp.array(float(qmin_int), dtype=jnp.float32)
+    qmax = jnp.array(float(qmax_int), dtype=jnp.float32)
+    qrange = qmax - qmin  # float32 safe
 
-    qmin = -2 ** 15
-    qmax = 2 ** 15 - 1
+    min_val = jnp.min(tensor).astype(jnp.float32)
+    max_val = jnp.max(tensor).astype(jnp.float32)
 
-    min_val = jnp.min(tensor)
-    max_val = jnp.max(tensor)
+    # Compute scale in float32 to avoid overflow/underflow inside JAX
+    scale = jnp.where(max_val != min_val, (max_val - min_val) / qrange,
+                      jnp.array(1.0, dtype=jnp.float32))
 
-    scale = jnp.where(max_val != min_val, (max_val - min_val) / (qmax - qmin),
-                      1.0)
-    zero_point = jnp.where(
-        max_val != min_val,
-        jnp.round(qmin - min_val / scale).astype(jnp.int32),
-        0
-    )
+    # Avoid division by zero if scale is zero
+    safe_scale = jnp.where(scale == 0.0, jnp.array(1.0, dtype=jnp.float32), scale)
 
-    quantized = jnp.where(
-        max_val != min_val,
-        jnp.clip(jnp.round(tensor / scale + zero_point), qmin, qmax)
-        .astype(jnp.int32),
-        jnp.zeros_like(tensor, dtype=jnp.int32)
-    )
+    # Compute zero_point in float then round and cast to int64 before final cast
+    zero_point_f = jnp.round(qmin - min_val / safe_scale)
+    zero_point = zero_point_f.astype(jnp.int64)
+
+    # Quantize in float then clip and cast to int32
+    quant_f = jnp.round(tensor.astype(jnp.float32) / safe_scale + zero_point_f)
+    quant_clipped = jnp.clip(quant_f, qmin, qmax).astype(jnp.int32)
+
+    # If the tensor had no dynamic range, return zeros
+    quantized = jnp.where(max_val != min_val, quant_clipped,
+                          jnp.zeros_like(tensor, dtype=jnp.int32))
 
     return {
         'quantized': quantized,
@@ -114,28 +117,43 @@ def quantize_tensor_to_int32(tensor: jnp.ndarray):
     }
 
 
-def recursively_quantize(params: Union[dict], parent_key=''
-                         ) -> dict:
-    """Recursively quantizes all JAX float32 arrays:
-       - embeddings → float16
-       - weights → int8
-       - bias → int32
+def recursively_quantize(params: Union[dict], parent_key: str = '') -> dict:
+    """
+    Recursively processes all JAX float32 arrays:
+      - embeddings → BF16 (no quantization, just cast)
+      - weights   → INT8 (with scale/zero_point)
+      - bias      → INT32 (quantized)
     """
     quantized_params = {}
 
     for k, v in params.items():
         full_key = f"{parent_key}/{k}" if parent_key else k
 
-        if isinstance(v, (dict)):
+        if isinstance(v, dict):
             quantized_params[k] = recursively_quantize(v, full_key)
 
         elif isinstance(v, jnp.ndarray) and v.dtype == jnp.float32:
-            if "embedding" in full_key.lower():
-                quantized_params[k] = v  # keep float32 for float16 export
-            elif "bias" in full_key.lower():
-                quantized_params[k] = quantize_tensor_to_int32(v)
+            lower_key = full_key.lower()
+
+            if "embedding" in lower_key:
+                # Embeddings: store as BF16
+                quantized_params[k] = v.astype(jnp.bfloat16)
+
+            elif "bias" in lower_key:
+                # Bias: quantize to INT32 (UNCHANGED)
+                quantized_params[k] = quantize_tensor_int32(v)
+
+            elif "kernel" in lower_key:
+                # Weights: transpose to store as column-major
+                # JAX/NumPy are row-major by default.
+                # Saving the transpose makes it effectively column-major
+                v_transposed = jnp.transpose(v, (1, 0))
+                quantized_params[k] = quantize_tensor_int8(v_transposed)
+
             else:
-                quantized_params[k] = quantize_tensor(v)
+                # Other float32 tensors (if any)
+                quantized_params[k] = quantize_tensor_int8(v)
+
         else:
             quantized_params[k] = v
 
@@ -153,36 +171,66 @@ def export_quantized_params_to_bin_json(quantized_params, output_dir):
         nonlocal bin_data, offset
 
         for k, v in node.items():
+            # Quantized weights or biases (INT8 or INT32)
             if isinstance(v, dict) and 'quantized' in v:
-                # Determine dtype
-                dtype = 'int32' if v['quantized'].dtype == jnp.int32 else \
-                    'int8'
-                quantized_np = np.array(v['quantized']).flatten().astype(
-                    np.int32 if dtype == 'int32' else np.int8)
+                # Determine dtype from numpy dtype of quantized array
+                quant_np = np.array(v['quantized']).flatten()
+                np_dtype = quant_np.dtype
+
+                if np_dtype == np.int8:
+                    dtype = 'int8'
+                elif np_dtype == np.int32:
+                    dtype = 'int32'
+                else:
+                    # Fallback to string representation
+                    dtype = str(np_dtype)
+
+                quantized_np = quant_np.astype(np_dtype)
                 size = quantized_np.size
                 bin_data += quantized_np.tobytes()
 
+                # Convert scale and zero_point to Python scalars if they are
+                # arrays
+                scale_val = float(v['scale']) if not \
+                    isinstance(v['scale'], (jnp.ndarray, np.ndarray)) \
+                    else float(np.array(v['scale']).item())
+                zp_val = int(v['zero_point']) if not \
+                    isinstance(v['zero_point'], (jnp.ndarray, np.ndarray)) \
+                    else int(np.array(v['zero_point']).item())
+
                 meta_subtree[k] = {
                     'shape': list(v['quantized'].shape),
-                    'scale': float(v['scale']),
-                    'zero_point': int(v['zero_point']),
+                    'scale': scale_val,
+                    'zero_point': zp_val,
                     'dtype': dtype,
                     'offset': offset,
                     'size': size
                 }
                 offset += quantized_np.nbytes
 
+            # Raw arrays: embeddings (BF16) or others left as-is
             elif isinstance(v, jnp.ndarray):
-                # Embedding or float32 weights (e.g., float16 export)
-                raw_np = np.array(v).flatten().astype(np.float16)
+                if v.dtype == jnp.bfloat16:
+                    raw_np = np.array(v).flatten().astype(np.float16)
+                    # store as float16 on disk
+                    dtype = "bfloat16"
+                elif v.dtype == jnp.float32:
+                    raw_np = np.array(v).flatten().astype(np.float32)
+                    dtype = "float32"
+                else:
+                    # Fallback: store in original dtype
+                    raw_np = np.array(v).flatten()
+                    dtype = str(raw_np.dtype)
+
                 size = raw_np.size
                 bin_data += raw_np.tobytes()
-                scale = np.max(raw_np) - np.min(raw_np)
+                scale = float(np.max(raw_np) - np.min(raw_np)) if size > 0 \
+                    else 0.0
 
                 meta_subtree[k] = {
                     'shape': list(v.shape),
-                    'dtype': "float16",
-                    'scale': float(scale),
+                    'dtype': dtype,
+                    'scale': scale,
                     'offset': offset,
                     'size': size
                 }
@@ -190,21 +238,17 @@ def export_quantized_params_to_bin_json(quantized_params, output_dir):
                 offset += raw_np.nbytes
 
             elif isinstance(v, dict):
-                # Recurse into nested dict
                 meta_subtree[k] = {}
                 process_node(v, meta_subtree[k])
 
             else:
-                # Non-array leaf (e.g., constants or unsupported types)
                 meta_subtree[k] = str(v)
 
     process_node(quantized_params, metadata)
 
-    # Write binary file
     with open(os.path.join(output_dir, 'weights.bin'), 'wb') as f:
         f.write(bin_data)
 
-    # Write hierarchical metadata JSON
     with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
         json.dump(metadata, f, indent=4)
 
@@ -213,21 +257,17 @@ def export_quantized_params_to_bin_json(quantized_params, output_dir):
 
 
 def quantize_weights_to_int8(args):
-
-    ckpt_dir = args.ckpt_dir
+    ckpt_dir = os.path.abspath(args.ckpt_dir)
     output_dir = args.output_dir
-    ckpt_dir = os.path.abspath(ckpt_dir)
     tokenizer_filepath = args.tokenizer_filepath
     tokenizer = load_tokenizer(tokenizer_filepath)
 
-    # hyperparameters
     random_state = args.random_state
     embed_size = args.embed_dim
     hidden_size = args.hidden_dim
     num_heads = args.num_heads
     bidirectional = args.bidirectional
 
-    # initialize checkpoint manager
     checkpoint_manager = ocp.CheckpointManager(ckpt_dir)
     step = checkpoint_manager.latest_step()
 
@@ -236,13 +276,12 @@ def quantize_weights_to_int8(args):
         tokenizer.sos_token_id, bidirectional
     )
 
-    # initialize random key and training state
     prng_key = random.PRNGKey(random_state)
 
-    train_state = init_train_state(model, prng_key,
-                                   seq_len=tokenizer.MAX_SEQUENCE_LENGTH)
+    train_state = init_train_state(
+        model, prng_key, seq_len=tokenizer.MAX_SEQUENCE_LENGTH
+    )
 
-    # get PyTree object to load checkpoint
     abstract_state = jax.tree_util.tree_map(
         ocp.utils.to_shape_dtype_struct, train_state
     )
@@ -251,7 +290,6 @@ def quantize_weights_to_int8(args):
     )
     params = state.params
 
-    # quantize parameters and export to JSON & BIN files
     quantized_params = recursively_quantize(params)
     export_quantized_params_to_bin_json(quantized_params, output_dir)
 

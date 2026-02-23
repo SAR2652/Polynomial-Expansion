@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include "utils.h"
 
 WeightsMetadata::WeightsMetadata(const std::string json_path,
@@ -22,7 +23,7 @@ WeightsMetadata::WeightsMetadata(const std::string json_path,
 
 std::vector<char> WeightsMetadata::get_data(
     std::string dtype, int offset, int size
-)
+) const
 {
     size_t nbytes;
     if(dtype == "int8")
@@ -33,7 +34,7 @@ std::vector<char> WeightsMetadata::get_data(
     {
         nbytes = size * sizeof(int32_t);
     }
-    else if(dtype == "float16")
+    else if(dtype == "float16" || dtype == "bfloat16")
     {
         nbytes = size * sizeof(uint16_t);
     }
@@ -51,16 +52,4 @@ std::tuple<int, int> get_threads_and_blocks(int total_tokens,
 {
     int blocks = (total_tokens + threads - 1) / threads;
     return {threads, blocks};
-}
-
-
-__global__ void quantize_half_to_int8(__half* input, int8_t* output, 
-                                      int N, float scale) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < N) {
-        float val = __half2float(input[idx]);
-        int q = static_cast<int>(roundf(val / scale));
-        q = max(-128, min(127, q));
-        output[idx] = static_cast<int8_t>(q);
-    }
 }
