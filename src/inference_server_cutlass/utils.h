@@ -63,10 +63,3 @@ __global__ void quantize_to_int8(const T* input, int8_t* output,
         output[idx] = static_cast<int8_t>(q);
     }
 }
-
-// template __global__ void quantize_to_int8<__half>(
-//     const __half* input, int8_t* output, int N, float scale);
-
-// template __global__ void quantize_to_int8<__nv_bfloat16>(
-//     const __nv_bfloat16* input, int8_t* output, int N, float scale);
-

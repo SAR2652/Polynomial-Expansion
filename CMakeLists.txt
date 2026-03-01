@@ -3,9 +3,13 @@ cmake_minimum_required(VERSION 3.28 FATAL_ERROR)
 # project name
 project(polynomial_expansion LANGUAGES CXX CUDA)
 
+# set(CMAKE_CXX_STANDARD 17)
+# set(CXX_STANDARD 17)
+# set(CUDA_STANDARD 17)
+
 set(CMAKE_CXX_STANDARD 17)
-set(CXX_STANDARD 17)
-set(CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # Set your target GPU architecture (adjust if needed)
 set(CMAKE_CUDA_ARCHITECTURES 80)

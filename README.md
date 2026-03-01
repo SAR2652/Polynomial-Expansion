@@ -10,12 +10,7 @@
 | DDP + KV    | 2    | ✅         | ✅  | 15.63             | 34.96            | 26.32                | 333,705             | 820,762           | 603,141                | 151.91         | 40.30%               |
 
 
-### Archived
-
-The model was trained for 22 epochs and had a final training loss of 185.99 over 800,000 samples trained in batch sizes of 16 selected at random (seed = 42) from the file train.txt which contains the training data of 1,000,000 samples. It took nearly 19 hours and 37 minutes to train the model in order to achieve this performance. The model achieves  The model currently achieves an accuracy of 98.74% on the entire data set (1,000,000 samples) and 98.35% on validation data which consist of the remaining 200,000 samples that were not used for training. (Check [Polynomial_Training_and_Evaluation.ipynb](https://github.com/SAR2652/Polynomial-Expansion/blob/main/Polynomial_Training_and_Evaluation.ipynb)). Each epoch takes approximately 54 minutes to complete with GPU Support. Inference over 1,000,000 samples takes nearly 144 minutes with GPU Support due to the complexity of the model since it involves a <b>for</b> loop that iterates over the maximum target length for each of the 1,000,000 samples while generating the next token.  The model comprises of an LSTM based Encoder and a Decoder that performs cross attention between the encoder of the outputs and the hidden states. The context vector is created by taking the Einstein Sum of the attention output and the encoder outputs and is concatenated with the target embedding and passed as input to an LSTM after which the LSTM output is passed to a fully connected layer to obtain the final prediction.
-
-
-# CUTLASS implementation notes:
+## CUTLASS implementation notes:
 1. Quantized weights to INT8 and bias to INT32.
 2. Started implementation with CUTLASS 4.1. It has no support for INT8 kernels
 3. Downgraded to CUTLASS 3.2.2. It cannot do INT8 for my case because:
@@ -56,7 +51,12 @@ For RTX 5070 / SM89 / int8→int32 GEMM:
 
 Do not use collective::CollectiveBuilder — it’s not implemented.
 ```
+4. Matrix MUltiplication now works for testing Linear layer using the device::GEMM API however, implementation is incorrect since linear layer takes s input dimension 128 but input shape of embedding dimension is 64. Despite of this issue CUTLASS works which means it has no input validation capabilities. Need to implement this stuff manually.
 
+
+## Archived
+
+The model was trained for 22 epochs and had a final training loss of 185.99 over 800,000 samples trained in batch sizes of 16 selected at random (seed = 42) from the file train.txt which contains the training data of 1,000,000 samples. It took nearly 19 hours and 37 minutes to train the model in order to achieve this performance. The model achieves  The model currently achieves an accuracy of 98.74% on the entire data set (1,000,000 samples) and 98.35% on validation data which consist of the remaining 200,000 samples that were not used for training. (Check [Polynomial_Training_and_Evaluation.ipynb](https://github.com/SAR2652/Polynomial-Expansion/blob/main/Polynomial_Training_and_Evaluation.ipynb)). Each epoch takes approximately 54 minutes to complete with GPU Support. Inference over 1,000,000 samples takes nearly 144 minutes with GPU Support due to the complexity of the model since it involves a <b>for</b> loop that iterates over the maximum target length for each of the 1,000,000 samples while generating the next token.  The model comprises of an LSTM based Encoder and a Decoder that performs cross attention between the encoder of the outputs and the hidden states. The context vector is created by taking the Einstein Sum of the attention output and the encoder outputs and is concatenated with the target embedding and passed as input to an LSTM after which the LSTM output is passed to a fully connected layer to obtain the final prediction.
 
 ## References
 The model architecture was inspired from the following tutorial.<br>

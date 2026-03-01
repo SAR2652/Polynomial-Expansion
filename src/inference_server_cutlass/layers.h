@@ -66,39 +66,39 @@ class Linear: public Layer
 };
 
 
-// template<typename KernelType, typename BiasType>
-// class LSTMCell: public Layer
-// {
-//     private:
-//         KernelType* hf_kernel;
-//         BiasType* hf_bias;
+template<typename KernelType, typename BiasType>
+class LSTMCell: public Layer
+{
+    private:
+        KernelType* hf_kernel;
+        BiasType* hf_bias;
 
-//         KernelType* hg_kernel;
-//         BiasType* hg_bias;
+        KernelType* hg_kernel;
+        BiasType* hg_bias;
         
-//         KernelType* hi_kernel;
-//         BiasType* hi_bias;
+        KernelType* hi_kernel;
+        BiasType* hi_bias;
         
-//         KernelType* ho_kernel;
-//         BiasType* ho_bias;
+        KernelType* ho_kernel;
+        BiasType* ho_bias;
 
-//         KernelType* if_kernel;
-//         BiasType* if_bias;
+        KernelType* if_kernel;
+        BiasType* if_bias;
 
-//         KernelType* ig_kernel;
-//         BiasType* ig_bias;
+        KernelType* ig_kernel;
+        BiasType* ig_bias;
 
-//         KernelType* ii_kernel;
-//         BiasType* ii_bias;
+        KernelType* ii_kernel;
+        BiasType* ii_bias;
 
-//         KernelType* io_kernel;
-//         BiasType* io_bias;  
+        KernelType* io_kernel;
+        BiasType* io_bias;  
 
-//     public: 
-//         LSTMCell(const nlohmann::json lstm_metadata,
-//             const WeightsMetadata& metadata);
+    public: 
+        LSTMCell(const nlohmann::json lstm_metadata,
+            const WeightsMetadata& metadata);
 
-//         ~LSTMCell();
+        ~LSTMCell();
 
-//         void forward(KernelType* input, BiasType* output);
-// };
+        // void forward(KernelType* input, BiasType* output);
+};
