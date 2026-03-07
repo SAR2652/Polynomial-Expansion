@@ -57,13 +57,13 @@ int main()
     std::cout << "Read embedding params" << std::endl;
 
     // Prepare synthetic input indices
-    const int batch_size = 2;
-    const int sequence_length = 3;
+    const int batch_size = 3;
+    const int sequence_length = 1;
     int total_tokens = batch_size * sequence_length;
 
     std::cout << "Read total tokens" << std::endl;
 
-    std::vector<int> h_input_indices = {0, 1, 2, 1, 0, 3};  // Example indices
+    std::vector<int> h_input_indices = {1, 0, 3};  // Example indices
 
     std::cout << "Input indices" << std::endl;
 
@@ -86,7 +86,7 @@ int main()
     int total_embedding_size = total_tokens * embedding_shape[1];
 
     cudaMalloc(&embedding_output, total_embedding_size * mul_factor);
-                                  // 2 x 3 x 64 x dtype_cost
+                                  // 3 x 1 x 64 x dtype_cost
 
     // Copy input indices to device
     cudaMemcpy(d_input_indices, h_input_indices.data(),
@@ -99,47 +99,39 @@ int main()
 
     // Run forward pass
     embedding->forward(d_input_indices, batch_size, sequence_length,
-                       embedding_output, quantized_embedding_int8,
-                       embedding_scale);
+                       embedding_output, quantized_embedding_int8);
 
     // Cleanup
     cudaFree(d_input_indices);
     cudaFree(embedding_output);
+    delete embedding;
 
-    // Allocate int32 array in memory
+    // Create LSTMCell
+    auto encoder_fwd_lstm_wmd = wmd->metadata["encoder"]["forward_lstm"];
+    auto kernel_tag = dtype_to_tag(encoder_fwd_lstm_wmd["hf"]["kernel"]
+                                   ["dtype"]);
+    auto bias_tag   = dtype_to_tag(encoder_fwd_lstm_wmd["hf"]["bias"]
+                                   ["dtype"]);
 
-    auto linear_wmd = wmd->metadata["decoder"]["fc_out"];
-    
-    auto kernel_tag = dtype_to_tag(linear_wmd["kernel"]["dtype"]);
-    auto bias_tag   = dtype_to_tag(linear_wmd["bias"]["dtype"]);
-
-    int linear_shape = linear_wmd["bias"]["shape"][0];  // 31
-    int linear_output_size = total_tokens * linear_shape; // 2 x 3 x 31
-
-    void* linear_output = nullptr;
-
-    // ---- Runtime dispatch → compile‑time template instantiation ----
     if (kernel_tag == DTypeTag::Int8 && bias_tag == DTypeTag::Int32)
     {
         using KernelType = int8_t;
         using BiasType   = int32_t;
 
-        cudaMalloc(&linear_output, linear_output_size * sizeof(BiasType));
-                                   // 2 x 3 x 31 x dtype_cost of int32
+        auto* lstmcell = new LSTMCell<KernelType, BiasType>(
+            encoder_fwd_lstm_wmd, *wmd);
 
-        auto* linear = new Linear<KernelType, BiasType>(linear_wmd, *wmd);
+        // linear->forward(
+        //     quantized_embedding_int8,
+        //     static_cast<BiasType*>(linear_output),
+        //     total_tokens,
+        //     embedding_shape[1],
+        //     linear_shape
+        // );
 
-        linear->forward(
-            quantized_embedding_int8,
-            static_cast<BiasType*>(linear_output),
-            total_tokens,
-            embedding_shape[1],
-            linear_shape
-        );
+        delete lstmcell;
 
-        delete linear;
-
-        std::cout << "Forward pass of Linear executed" << std::endl;
+        // std::cout << "Forward pass of Linear executed" << std::endl;
     }
     else
     {
@@ -148,9 +140,6 @@ int main()
 
 
     cudaFree(quantized_embedding_int8);
-    cudaFree(linear_output);
-    
-    delete embedding;
     delete wmd;
 
     return 0;

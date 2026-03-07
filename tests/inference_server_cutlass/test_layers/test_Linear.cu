@@ -99,8 +99,7 @@ int main()
 
     // Run forward pass
     embedding->forward(d_input_indices, batch_size, sequence_length,
-                       embedding_output, quantized_embedding_int8,
-                       embedding_scale);
+                       embedding_output, quantized_embedding_int8);
 
     // Cleanup
     cudaFree(d_input_indices);

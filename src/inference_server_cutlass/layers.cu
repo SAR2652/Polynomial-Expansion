@@ -154,21 +154,14 @@ void forward_impl(void* embedding_raw,
 }
 
 
-
-float Embedding::get_embedding_scale()
-{
-    return scale;
-}
-
 void Embedding::forward(int* input_indices,
                         int batch_size,
                         int sequence_length,
                         void* output,
-                        int8_t* quantized_embedding_int8,
-                        float embedding_scale)
+                        int8_t* quantized_embedding_int8)
 {
     int embedding_dim = shape[1];
-    float new_embedding_scale = embedding_scale / 255.0f;   // for int8
+    float new_embedding_scale = scale / 255.0f;   // for int8
     int total_tokens = batch_size * sequence_length;
     auto [blocks, threads] = get_threads_and_blocks(total_tokens);
 
@@ -347,38 +340,24 @@ LSTMCell<KernelType, BiasType>::LSTMCell(
 
     // IF
     auto if_md = lstm_metadata["if"];
-    BiasType* if_bias = 
-        extract_details_and_load_parameters<BiasType>(
-            if_md, "bias", metadata);
     KernelType* if_kernel = 
         extract_details_and_load_parameters<KernelType>(
             if_md, "kernel", metadata);
 
     // IG
     auto ig_md = lstm_metadata["ig"];
-    BiasType* ig_bias = 
-        extract_details_and_load_parameters<BiasType>(
-            ig_md, "bias", metadata);
     KernelType* ig_kernel = 
         extract_details_and_load_parameters<KernelType>(
             ig_md, "kernel", metadata);
 
     // II
     auto ii_md = lstm_metadata["ii"];
-
-    BiasType* ii_bias = 
-        extract_details_and_load_parameters<BiasType>(
-            ii_md, "bias", metadata);
     KernelType* ii_kernel = 
         extract_details_and_load_parameters<KernelType>(
             ii_md, "kernel", metadata);
 
     // IO
     auto io_md = lstm_metadata["io"];
-
-    BiasType* io_bias = 
-        extract_details_and_load_parameters<BiasType>(
-            io_md, "bias", metadata);
     KernelType* io_kernel = 
         extract_details_and_load_parameters<KernelType>(
             io_md, "kernel", metadata);
@@ -400,17 +379,12 @@ LSTMCell<KernelType, BiasType>::~LSTMCell()
     cudaFree(ho_bias);
     cudaFree(ho_kernel);
 
-    cudaFree(if_bias);
     cudaFree(if_kernel);
-
-    cudaFree(ig_bias);
     cudaFree(ig_kernel);
-
-    cudaFree(ii_bias);
     cudaFree(ii_kernel);
-
-    cudaFree(io_bias);
     cudaFree(io_kernel);
 }
+
+
 
 template class LSTMCell<int8_t, int32_t>;

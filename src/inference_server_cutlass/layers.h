@@ -3,6 +3,7 @@
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
 #include <cuda.h>
+#include <nlohmann/json.hpp>
 #include "device_launch_parameters.h"
 #include "utils.h"
 
@@ -38,8 +39,7 @@ class Embedding : public Layer
         // forward now takes void*
         void forward(int* input_indices, int batch_size,
                     int sequence_length, void* output,
-                    int8_t* quantized_embedding_int8,
-                    float embedding_scale);
+                    int8_t* quantized_embedding_int8);
 
         float get_embedding_scale();
 };
