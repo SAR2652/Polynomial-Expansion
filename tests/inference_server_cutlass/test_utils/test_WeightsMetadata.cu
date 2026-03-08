@@ -1,4 +1,4 @@
-#include "../../src/inference_server_cutlass/utils.h"
+#include "utils/utils.h"
 #include "test_utils.h"
 
 TEST_F(WeightsMetadataTest, ConstructorSucceedsWithValidFiles) {

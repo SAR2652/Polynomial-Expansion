@@ -17,12 +17,21 @@ set(CMAKE_CUDA_ARCHITECTURES 80)
 enable_testing()
 
 add_library(inference_server_cutlass
-    src/inference_server_cutlass/utils.cu
-    src/inference_server_cutlass/layers.cu
+    # ---- layers (CUDA) ----
+    inference_server_cutlass/src/layers/embedding.cu
+    inference_server_cutlass/src/layers/linear.cu
+    inference_server_cutlass/src/layers/lstmcell.cu
+
+    # ---- utils ----
+    inference_server_cutlass/src/utils/utils.cpp
+    # src/utils/Model.cpp
+    # src/utils/load_weights.cpp
+    # src/utils/load_weights_old.cu
 )
 
-target_include_directories(inference_server_cutlass PUBLIC
-    ${PROJECT_SOURCE_DIR}/src/inference_server_cutlass
+target_include_directories(inference_server_cutlass
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/inference_server_cutlass/include
 )
 
 # Add GoogleTest (assumes you have it in third_party/googletest)

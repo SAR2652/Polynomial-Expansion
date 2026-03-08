@@ -3,8 +3,9 @@
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <typeinfo> // Required for typeid
-#include "../../../src/inference_server_cutlass/utils.h"
-#include "../../../src/inference_server_cutlass/layers.h"
+#include "utils/utils.h"
+#include "utils/utils.cuh"
+#include "layers/embedding.h"
 
 
 enum class DTypeTag { Int8, Int32, Float32 };

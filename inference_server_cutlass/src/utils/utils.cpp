@@ -1,7 +1,5 @@
-#include <iostream>
-#include <cuda_fp16.h>
-#include <cuda_bf16.h>
-#include "utils.h"
+#include "utils/utils.h"
+
 
 WeightsMetadata::WeightsMetadata(const std::string json_path,
                                  const std::string weights_bin_path)

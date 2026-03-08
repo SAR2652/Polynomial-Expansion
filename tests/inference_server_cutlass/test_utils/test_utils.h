@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
-#include <fstream>
 #include <filesystem>
 
-namespace fs = std::filesystem;
 
 class WeightsMetadataTest : public ::testing::Test {
 protected:
