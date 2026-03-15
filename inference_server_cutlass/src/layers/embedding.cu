@@ -64,16 +64,17 @@ void forward_impl(void* embedding_raw,
                   int* input_indices,
                   int B, int S,
                   void* output_raw,
-                  int embedding_dim)
+                  int embedding_dim,
+                  cudaStream_t stream)        // <-- added
 {
     T* embedding = static_cast<T*>(embedding_raw);
-    T* output = static_cast<T*>(output_raw);
+    T* output    = static_cast<T*>(output_raw);
 
     int total_tokens = B * S;
     int threads = 256;
-    int blocks = (total_tokens + threads - 1) / threads;
+    int blocks  = (total_tokens + threads - 1) / threads;
 
-    embedding_lookup_kernel_t<T><<<blocks, threads>>>(
+    embedding_lookup_kernel_t<T><<<blocks, threads, 0, stream>>>(   // <-- stream
         embedding,
         input_indices,
         output,
@@ -84,14 +85,16 @@ void forward_impl(void* embedding_raw,
 }
 
 
+
 void Embedding::forward(int* input_indices,
                         int batch_size,
                         int sequence_length,
                         void* output,
-                        int8_t* quantized_embedding_int8)
+                        int8_t* quantized_embedding_int8,
+                        cudaStream_t stream)   // <-- added
 {
     int embedding_dim = shape[1];
-    float new_embedding_scale = scale / 255.0f;   // for int8
+    float new_embedding_scale = scale / 255.0f;
     int total_tokens = batch_size * sequence_length;
     auto [blocks, threads] = get_threads_and_blocks(total_tokens, 256);
 
@@ -103,13 +106,15 @@ void Embedding::forward(int* input_indices,
             batch_size,
             sequence_length,
             output,
-            embedding_dim
+            embedding_dim,
+            stream
         );
 
-        quantize_to_int8<<<blocks, threads>>>(
+        quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
             static_cast<__half*>(output),
             quantized_embedding_int8,
-            total_tokens, new_embedding_scale
+            total_tokens,
+            new_embedding_scale
         );
     }
     else if (dtype == "bfloat16")
@@ -120,23 +125,26 @@ void Embedding::forward(int* input_indices,
             batch_size,
             sequence_length,
             output,
-            embedding_dim
+            embedding_dim,
+            stream
         );
-        quantize_to_int8<<<blocks, threads>>>(
+
+        quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
             static_cast<__nv_bfloat16*>(output),
             quantized_embedding_int8,
-            total_tokens, new_embedding_scale
+            total_tokens,
+            new_embedding_scale
         );
     }
     else
     {
         throw std::runtime_error("Unsupported dtype: " + dtype);
     }
-
 }
+
 
 
 Embedding::~Embedding()
 {
-    cudaFree(embedding);
+    cudaFreeAsync(embedding, stream_);
 }

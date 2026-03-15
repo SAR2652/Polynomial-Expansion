@@ -11,15 +11,16 @@ class Embedding : public Layer
 
     public:
         Embedding(const std::vector<int> shape, const std::string dtype,
-                const float scale, const int offset, const int size,
-                WeightsMetadata& metadata);
+                  const float scale, const int offset, const int size,
+                  WeightsMetadata& metadata);
 
         ~Embedding();
 
         // forward now takes void*
         void forward(int* input_indices, int batch_size,
                     int sequence_length, void* output,
-                    int8_t* quantized_embedding_int8);
+                    int8_t* quantized_embedding_int8,
+                    cudaStream_t stream);
 
         float get_embedding_scale();
 };

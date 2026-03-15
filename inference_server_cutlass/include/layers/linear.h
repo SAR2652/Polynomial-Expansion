@@ -16,6 +16,6 @@ class Linear: public Layer
 
         void forward(KernelType* input, BiasType* output,
             const int total_tokens, const int input_shape,
-            const int output_shape);
+            const int output_shape, cudaStream_t stream);
 
 };

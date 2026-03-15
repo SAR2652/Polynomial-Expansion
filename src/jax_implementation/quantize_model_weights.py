@@ -77,7 +77,8 @@ def quantize_tensor_int8(tensor: jnp.ndarray, num_bits=8):
 def quantize_tensor_int32(tensor: jnp.ndarray):
     """Quantizes a float32 JAX tensor to int32 using uniform affine
     quantization (per-tensor). This implementation avoids integer overflow
-    by performing range arithmetic in floating point and only casting at the end.
+    by performing range arithmetic in floating point and only casting at the
+    end.
     """
     # int32 range constants as Python ints
     qmin_int = -2 ** 31
@@ -96,9 +97,11 @@ def quantize_tensor_int32(tensor: jnp.ndarray):
                       jnp.array(1.0, dtype=jnp.float32))
 
     # Avoid division by zero if scale is zero
-    safe_scale = jnp.where(scale == 0.0, jnp.array(1.0, dtype=jnp.float32), scale)
+    safe_scale = jnp.where(scale == 0.0, jnp.array(1.0, dtype=jnp.float32),
+                           scale)
 
-    # Compute zero_point in float then round and cast to int64 before final cast
+    # Compute zero_point in float then round and cast to int64 before final
+    # cast
     zero_point_f = jnp.round(qmin - min_val / safe_scale)
     zero_point = zero_point_f.astype(jnp.int64)
 

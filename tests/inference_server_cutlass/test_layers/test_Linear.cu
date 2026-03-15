@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <typeinfo> // Required for typeid
@@ -30,127 +31,151 @@ using dtype_t = typename dtype_map<tag>::type;
 
 int main()
 {
-    std::string json_path = std::filesystem::absolute(
-        "../../../output/metadata.json")
-        .string();
-    std::string bin_path = std::filesystem::absolute(
-        "../../../output/weights.bin")
-        .string();
+    // -------------------------
+    // Create a CUDA stream
+    // -------------------------
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
 
-    std::cout << json_path << std::endl;
+    std::string json_path = std::filesystem::absolute(
+        "../../../output/metadata.json").string();
+    std::string bin_path = std::filesystem::absolute(
+        "../../../output/weights.bin").string();
 
     WeightsMetadata* wmd = new WeightsMetadata(json_path, bin_path);
 
     auto embedding_wmd = wmd->metadata["encoder"]["embedding"]["embedding"];
-    std::cout << "Embedding shape JSON = " << embedding_wmd["shape"] << std::endl;
     const std::vector<int> embedding_shape =
         embedding_wmd["shape"].get<std::vector<int>>();
     const std::string embedding_dtype = embedding_wmd["dtype"];
     const int embedding_offset = embedding_wmd["offset"];
-    const int embedding_size = embedding_wmd["size"];
+    const int embedding_size   = embedding_wmd["size"];
     const float embedding_scale = embedding_wmd["scale"];
 
-    std::cout << "Reading embedding params" << std::endl;
+    Embedding* embedding = new Embedding(
+        embedding_shape, embedding_dtype,
+        embedding_scale, embedding_offset,
+        embedding_size, *wmd
+    );
 
-    Embedding* embedding = new Embedding(embedding_shape, embedding_dtype,
-                                         embedding_scale, embedding_offset,
-                                         embedding_size, *wmd);
-    
-    std::cout << "Read embedding params" << std::endl;
-
-    // Prepare synthetic input indices
+    // -------------------------
+    // Prepare input
+    // -------------------------
     const int batch_size = 2;
     const int sequence_length = 3;
     int total_tokens = batch_size * sequence_length;
 
-    std::cout << "Read total tokens" << std::endl;
+    std::vector<int> h_input_indices = {0, 1, 2, 1, 0, 3};
 
-    std::vector<int> h_input_indices = {0, 1, 2, 1, 0, 3};  // Example indices
-
-    std::cout << "Input indices" << std::endl;
-
-    // Allocate device memory
     int* d_input_indices;
-    cudaMalloc(&d_input_indices, total_tokens * sizeof(int));
+    
+    // cudaMallocAsync / cudaFreeAsync ensure memory ops don’t force
+    // device‑wide synchronization.
+    cudaMallocAsync(&d_input_indices, total_tokens * sizeof(int), stream);
 
+    
+    // cudaMemcpyAsync lets transfers overlap with compute.
+    cudaMemcpyAsync(
+        d_input_indices,
+        h_input_indices.data(),
+        total_tokens * sizeof(int),
+        cudaMemcpyHostToDevice,
+        stream
+    );
+
+    // -------------------------
+    // Allocate embedding output
+    // -------------------------
     void* embedding_output = nullptr;
-    int mul_factor = 0;
-
-    if(embedding_dtype == "float16")
-    {
-        mul_factor = sizeof(__half);
-    }
-    else if(embedding_dtype == "bfloat16")
-    {
-        mul_factor = sizeof(__nv_bfloat16);
-    }
+    int mul_factor = (embedding_dtype == "float16")
+                        ? sizeof(__half)
+                        : sizeof(__nv_bfloat16);
 
     int total_embedding_size = total_tokens * embedding_shape[1];
 
-    cudaMalloc(&embedding_output, total_embedding_size * mul_factor);
-                                  // 2 x 3 x 64 x dtype_cost
+    cudaMallocAsync(
+        &embedding_output,
+        total_embedding_size * mul_factor,
+        stream
+    );
 
-    // Copy input indices to device
-    cudaMemcpy(d_input_indices, h_input_indices.data(),
-               total_tokens * sizeof(int), cudaMemcpyHostToDevice);
-
+    // -------------------------
+    // Allocate quantized int8 buffer
+    // -------------------------
     int8_t* quantized_embedding_int8;
-    cudaMalloc(&quantized_embedding_int8,
-               total_embedding_size * sizeof(int8_t));
-               // 2 x 3 x 64 x dtype_cost for int8
+    cudaMallocAsync(
+        &quantized_embedding_int8,
+        total_embedding_size * sizeof(int8_t),
+        stream
+    );
 
-    // Run forward pass
-    embedding->forward(d_input_indices, batch_size, sequence_length,
-                       embedding_output, quantized_embedding_int8);
+    // -------------------------
+    // Run embedding forward (async)
+    // -------------------------
+    embedding->forward(
+        d_input_indices,
+        batch_size,
+        sequence_length,
+        embedding_output,
+        quantized_embedding_int8,
+        stream
+    );
 
-    // Cleanup
-    cudaFree(d_input_indices);
-    cudaFree(embedding_output);
-
-    // Allocate int32 array in memory
-
+    // -------------------------
+    // Linear layer
+    // -------------------------
     auto linear_wmd = wmd->metadata["decoder"]["fc_out"];
-    
+
     auto kernel_tag = dtype_to_tag(linear_wmd["kernel"]["dtype"]);
     auto bias_tag   = dtype_to_tag(linear_wmd["bias"]["dtype"]);
 
-    int linear_shape = linear_wmd["bias"]["shape"][0];  // 31
-    int linear_output_size = total_tokens * linear_shape; // 2 x 3 x 31
+    int linear_shape = linear_wmd["bias"]["shape"][0];
+    int linear_output_size = total_tokens * linear_shape;
 
     void* linear_output = nullptr;
 
-    // ---- Runtime dispatch → compile‑time template instantiation ----
     if (kernel_tag == DTypeTag::Int8 && bias_tag == DTypeTag::Int32)
     {
         using KernelType = int8_t;
         using BiasType   = int32_t;
 
-        cudaMalloc(&linear_output, linear_output_size * sizeof(BiasType));
-                                   // 2 x 3 x 31 x dtype_cost of int32
+        cudaMallocAsync(
+            &linear_output,
+            linear_output_size * sizeof(BiasType),
+            stream
+        );
 
-        auto* linear = new Linear<KernelType, BiasType>(linear_wmd, *wmd);
+        auto* linear = new Linear<KernelType, BiasType>(
+            linear_wmd, *wmd, stream
+        );
 
         linear->forward(
             quantized_embedding_int8,
             static_cast<BiasType*>(linear_output),
             total_tokens,
             embedding_shape[1],
-            linear_shape
+            linear_shape,
+            stream
         );
 
         delete linear;
-
-        std::cout << "Forward pass of Linear executed" << std::endl;
     }
-    else
-    {
+    else {
         throw std::runtime_error("Unsupported kernel/bias dtype combination");
     }
 
+    // -------------------------
+    // Cleanup (async)
+    // -------------------------
+    cudaFreeAsync(d_input_indices, stream);
+    cudaFreeAsync(embedding_output, stream);
+    cudaFreeAsync(quantized_embedding_int8, stream);
+    cudaFreeAsync(linear_output, stream);
 
-    cudaFree(quantized_embedding_int8);
-    cudaFree(linear_output);
-    
+    // Ensure all work is done
+    cudaStreamSynchronize(stream);
+    cudaStreamDestroy(stream);
+
     delete embedding;
     delete wmd;
 

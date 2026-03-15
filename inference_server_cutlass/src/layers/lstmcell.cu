@@ -9,87 +9,163 @@ LSTMCell<KernelType, BiasType>::LSTMCell(
 {
     // HF
     auto hf_md = lstm_metadata["hf"];
-    BiasType* hf_bias = 
-        extract_details_and_load_parameters<BiasType>(
-            hf_md, "bias", metadata);
-    KernelType* hf_kernel = 
-        extract_details_and_load_parameters<KernelType>(
-            hf_md, "kernel", metadata);
+    hf_bias = extract_details_and_load_parameters<BiasType>(
+        hf_md, "bias", metadata
+    );
+    hf_kernel = extract_details_and_load_parameters<KernelType>(
+        hf_md, "kernel", metadata
+    );
 
     // HG
     auto hg_md = lstm_metadata["hg"];
-    BiasType* hg_bias = 
-        extract_details_and_load_parameters<BiasType>(
-            hg_md, "bias", metadata);
-    KernelType* hg_kernel = 
-        extract_details_and_load_parameters<KernelType>(
-            hg_md, "kernel", metadata);
+    hg_bias = extract_details_and_load_parameters<BiasType>(
+        hg_md, "bias", metadata
+    );
+    hg_kernel = extract_details_and_load_parameters<KernelType>(
+        hg_md, "kernel", metadata
+    );
 
     // HI
     auto hi_md = lstm_metadata["hi"];
 
-    BiasType* hi_bias = 
-        extract_details_and_load_parameters<BiasType>(
-            hi_md, "bias", metadata);
-    KernelType* hi_kernel = 
-        extract_details_and_load_parameters<KernelType>(
-            hi_md, "kernel", metadata);
+    hi_bias = extract_details_and_load_parameters<BiasType>(
+        hi_md, "bias", metadata
+    );
+    hi_kernel = extract_details_and_load_parameters<KernelType>(
+        hi_md, "kernel", metadata
+    );
 
     // HO
     auto ho_md = lstm_metadata["ho"];
 
-    BiasType* ho_bias = 
-        extract_details_and_load_parameters<BiasType>(
-            ho_md, "bias", metadata);
-    KernelType* ho_kernel = 
-        extract_details_and_load_parameters<KernelType>(
-            ho_md, "kernel", metadata);
+    ho_bias = extract_details_and_load_parameters<BiasType>(
+        ho_md, "bias", metadata
+    );
+    ho_kernel = extract_details_and_load_parameters<KernelType>(
+        ho_md, "kernel", metadata
+    );
 
     // IF
     auto if_md = lstm_metadata["if"];
-    KernelType* if_kernel = 
-        extract_details_and_load_parameters<KernelType>(
-            if_md, "kernel", metadata);
+    if_kernel = extract_details_and_load_parameters<KernelType>(
+        if_md, "kernel", metadata
+    );
 
     // IG
     auto ig_md = lstm_metadata["ig"];
-    KernelType* ig_kernel = 
-        extract_details_and_load_parameters<KernelType>(
-            ig_md, "kernel", metadata);
+    ig_kernel = extract_details_and_load_parameters<KernelType>(
+        ig_md, "kernel", metadata
+    );
 
     // II
     auto ii_md = lstm_metadata["ii"];
-    KernelType* ii_kernel = 
-        extract_details_and_load_parameters<KernelType>(
-            ii_md, "kernel", metadata);
+    ii_kernel = extract_details_and_load_parameters<KernelType>(
+        ii_md, "kernel", metadata
+    );
 
     // IO
     auto io_md = lstm_metadata["io"];
-    KernelType* io_kernel = 
-        extract_details_and_load_parameters<KernelType>(
-            io_md, "kernel", metadata);
+    io_kernel = extract_details_and_load_parameters<KernelType>(
+        io_md, "kernel", metadata
+    );
 
 }
 
 template <typename KernelType, typename BiasType>
 LSTMCell<KernelType, BiasType>::~LSTMCell()
 {
-    cudaFree(hf_bias);
-    cudaFree(hf_kernel);
+    cudaFreeAsync(hf_bias, stream_);
+    cudaFreeAsync(hf_kernel, stream_);
 
-    cudaFree(hg_bias);
-    cudaFree(hg_kernel);
+    cudaFreeAsync(hg_bias, stream_);
+    cudaFreeAsync(hg_kernel, stream_);
 
-    cudaFree(hi_bias);
-    cudaFree(hi_kernel);
+    cudaFreeAsync(hi_bias, stream_);
+    cudaFreeAsync(hi_kernel, stream_);
 
-    cudaFree(ho_bias);
-    cudaFree(ho_kernel);
+    cudaFreeAsync(ho_bias, stream_);
+    cudaFreeAsync(ho_kernel, stream_);
 
-    cudaFree(if_kernel);
-    cudaFree(ig_kernel);
-    cudaFree(ii_kernel);
-    cudaFree(io_kernel);
+    cudaFreeAsync(if_kernel, stream_);
+    cudaFreeAsync(ig_kernel, stream_);
+    cudaFreeAsync(ii_kernel, stream_);
+    cudaFreeAsync(io_kernel, stream_);
 }
+
+
+// __device__ inline float sigmoidf(float x) {
+//     return 1.f / (1.f + expf(-x));
+// }
+
+// __device__ inline float tanhf_approx(float x) {
+//     return tanhf(x);
+// }
+
+// template <typename KernelType, typename BiasType>
+// void LSTMCell<KernelType, BiasType>::run_gate(
+//     KernelType* x, KernelType* h, BiasType* gate_out, int batch_size,
+//     int input_dim, int hidden_dim, bool use_sigmoid
+// )
+// {
+//     // ----------------------
+//     // CUTLASS device GEMM
+//     // ----------------------
+//     using Gemm = typename GemmConfigSm80<KernelType, BiasType>::Gemm;
+
+//     // workspace: tmp = x @ Wx
+//     BiasType *tmp;
+//     cudaMalloc(&tmp, sizeof(BiasType) * M * N);
+
+    
+// }
+
+// template <typename KernelType, typename BiasType>
+// void LSTMCell<KernelType, BiasType>::forward(KernelType* quantized_embeddings,
+//     float* hidden, float* cell)
+// {
+//     // ----------------------
+//     // CUTLASS device GEMM
+//     // ----------------------
+//     using Gemm = typename GemmConfigSm80<KernelType, BiasType>::Gemm;
+
+//     // Within {kernel, input_size} , the input_size is the stride
+
+//     BiasType* 
+
+//     typename Gemm::Arguments args{
+//         {total_tokens, output_size, input_size},  // Gemm dimensions M,N,K
+//         {input, input_size},                       // A matrix (RowMajor)
+//         {kernel, input_size},                      // B matrix (ColumnMajor)
+//         // bias broadcast across rows
+//         {bias, 0},                                 // C matrix (RowMajor)
+//         {output, output_size},                     // D matrix (RowMajor)
+//         {1, 1}                                     // alpha=1, beta=1
+//     };
+
+//     Gemm gemm_op;
+
+//     // Allocate workspace if needed
+//     size_t workspace_size = gemm_op.get_workspace_size(args);
+//     void* workspace = nullptr;
+//     if (workspace_size > 0) {
+//         cudaMalloc(&workspace, workspace_size);
+//     }
+
+//     // Initialize GEMM
+//     cutlass::Status status = gemm_op.initialize(args, workspace);
+//     if (status != cutlass::Status::kSuccess) {
+//         std::cerr << "GEMM initialize failed: " << int(status) << "\n";
+//         if (workspace) cudaFree(workspace);
+//         return;
+//     }
+
+//     // Launch GEMM
+//     status = gemm_op();
+//     if (status != cutlass::Status::kSuccess) {
+//         std::cerr << "GEMM launch failed: " << int(status) << "\n";
+//     }
+
+//     if (workspace) cudaFree(workspace);
+// }
 
 template class LSTMCell<int8_t, int32_t>;

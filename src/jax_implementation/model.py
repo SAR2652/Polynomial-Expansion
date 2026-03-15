@@ -24,8 +24,6 @@ class EncoderFLAX(nn.Module):
 
         fwd_hidden = jnp.zeros((batch_size, self.embed_dim))
         fwd_cell = jnp.zeros((batch_size, self.embed_dim))
-        bkwd_hidden = jnp.copy(fwd_hidden)
-        bkwd_cell = jnp.copy(fwd_cell)
 
         # print('hidden and cell states organized')
 
@@ -42,6 +40,8 @@ class EncoderFLAX(nn.Module):
         # print('outputs organized')
 
         if self.bidirectional:
+            bkwd_hidden = jnp.copy(fwd_hidden)
+            bkwd_cell = jnp.copy(fwd_cell)
             backward_outputs = []
             # Iterate over sequence
             for t in range(seq_len - 1, -1, -1):
