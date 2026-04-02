@@ -22,8 +22,8 @@ class EncoderFLAX(nn.Module):
         # print(embeddings.shape)
         batch_size, seq_len, _ = embeddings.shape
 
-        fwd_hidden = jnp.zeros((batch_size, self.embed_dim))
-        fwd_cell = jnp.zeros((batch_size, self.embed_dim))
+        fwd_hidden = jnp.zeros((batch_size, self.hidden_dim))
+        fwd_cell = jnp.zeros((batch_size, self.hidden_dim))
 
         # print('hidden and cell states organized')
 

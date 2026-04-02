@@ -19,7 +19,7 @@ enable_testing()
 add_library(inference_server_cutlass
     # ---- layers (CUDA) ----
     inference_server_cutlass/src/layers/embedding.cu
-    inference_server_cutlass/src/layers/linear.cu
+    # inference_server_cutlass/src/layers/linear.cu
     inference_server_cutlass/src/layers/lstmcell.cu
 
     # ---- utils ----

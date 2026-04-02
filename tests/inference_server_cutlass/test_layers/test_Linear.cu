@@ -102,12 +102,12 @@ int main()
     // -------------------------
     // Allocate quantized int8 buffer
     // -------------------------
-    int8_t* quantized_embedding_int8;
-    cudaMallocAsync(
-        &quantized_embedding_int8,
-        total_embedding_size * sizeof(int8_t),
-        stream
-    );
+    // int8_t* quantized_embedding_int8;
+    // cudaMallocAsync(
+    //     &quantized_embedding_int8,
+    //     total_embedding_size * sizeof(int8_t),
+    //     stream
+    // );
 
     // -------------------------
     // Run embedding forward (async)
@@ -117,7 +117,7 @@ int main()
         batch_size,
         sequence_length,
         embedding_output,
-        quantized_embedding_int8,
+        // quantized_embedding_int8,
         stream
     );
 

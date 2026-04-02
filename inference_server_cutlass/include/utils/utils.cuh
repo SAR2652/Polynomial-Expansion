@@ -21,14 +21,14 @@ __device__ inline float to_float<__nv_bfloat16>(__nv_bfloat16 x) {
     return __bfloat162float(x);
 }
 
+// Works for float, __half, and __nv_bfloat16.
+// inv_scale = 1.0f / scale (precomputed by caller to avoid per-element division).
 template <typename T>
 __global__ void quantize_to_int8(const T* input, int8_t* output,
-                                 int N, float scale) {
+                                  int N, float inv_scale) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < N) {
-        float val = to_float(input[idx]);
-        int q = static_cast<int>(roundf(val / scale));
-        q = max(-128, min(127, q));
-        output[idx] = static_cast<int8_t>(q);
+        float v = rintf(to_float(input[idx]) * inv_scale);
+        output[idx] = static_cast<int8_t>(fmaxf(-128.f, fminf(127.f, v)));
     }
 }

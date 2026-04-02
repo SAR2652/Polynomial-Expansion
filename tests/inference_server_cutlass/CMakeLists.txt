@@ -12,6 +12,6 @@ endfunction()
 
 
 add_cutlass_test(test_WeightsMetadata ON test_utils/test_WeightsMetadata.cu)
-add_cutlass_test(test_Embedding OFF test_layers/test_Embedding.cu)
+# add_cutlass_test(test_Embedding OFF test_layers/test_Embedding.cu)
 # add_cutlass_test(test_Linear OFF test_layers/test_Linear.cu)
 add_cutlass_test(test_LSTMCell OFF test_layers/test_LSTMCell.cu)

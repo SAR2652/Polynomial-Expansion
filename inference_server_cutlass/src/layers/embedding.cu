@@ -85,12 +85,11 @@ void forward_impl(void* embedding_raw,
 }
 
 
-
 void Embedding::forward(int* input_indices,
                         int batch_size,
                         int sequence_length,
                         void* output,
-                        int8_t* quantized_embedding_int8,
+                        // int8_t* quantized_embedding_int8,
                         cudaStream_t stream)   // <-- added
 {
     int embedding_dim = shape[1];
@@ -110,12 +109,12 @@ void Embedding::forward(int* input_indices,
             stream
         );
 
-        quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
-            static_cast<__half*>(output),
-            quantized_embedding_int8,
-            total_tokens,
-            new_embedding_scale
-        );
+        // quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
+        //     static_cast<__half*>(output),
+        //     quantized_embedding_int8,
+        //     total_tokens,
+        //     new_embedding_scale
+        // );
     }
     else if (dtype == "bfloat16")
     {
@@ -129,12 +128,12 @@ void Embedding::forward(int* input_indices,
             stream
         );
 
-        quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
-            static_cast<__nv_bfloat16*>(output),
-            quantized_embedding_int8,
-            total_tokens,
-            new_embedding_scale
-        );
+        // quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
+        //     static_cast<__nv_bfloat16*>(output),
+        //     quantized_embedding_int8,
+        //     total_tokens,
+        //     new_embedding_scale
+        // );
     }
     else
     {

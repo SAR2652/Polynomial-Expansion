@@ -93,6 +93,22 @@ int main()
     );
 
     // -------------------------
+    // Run embedding forward (async)
+    // -------------------------
+    embedding->forward(
+        d_input_indices,
+        batch_size,
+        sequence_length,
+        embedding_output,
+        // quantized_embedding_int8,
+        stream
+    );
+
+    cudaFreeAsync(d_input_indices, stream);
+
+    auto [blocks, threads] = get_threads_and_blocks(total_tokens, 256);
+
+    // -------------------------
     // Allocate quantized int8 buffer
     // -------------------------
     int8_t* quantized_embedding_int8;
@@ -102,17 +118,30 @@ int main()
         stream
     );
 
-    // -------------------------
-    // Run embedding forward (async)
-    // -------------------------
-    embedding->forward(
-        d_input_indices,
-        batch_size,
-        sequence_length,
-        embedding_output,
-        quantized_embedding_int8,
-        stream
-    );
+    if(embedding_dtype == "float16")
+    {
+        quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
+            static_cast<__half*>(embedding_output),
+            quantized_embedding_int8,
+            total_tokens,
+            1.0f / embedding_scale
+        );
+    }
+    else if(embedding_dtype == "bfloat16")
+    {
+        quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
+            static_cast<__nv_bfloat16*>(embedding_output),
+            quantized_embedding_int8,
+            total_tokens,
+            1.0f / embedding_scale
+        );
+    }
+    // quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
+        //     static_cast<__half*>(output),
+        //     quantized_embedding_int8,
+        //     total_tokens,
+        //     new_embedding_scale
+        // );
 
     // cudaError_t err = cudaGetLastError();
     // if (err != cudaSuccess) {
@@ -127,7 +156,6 @@ int main()
     // -------------------------
     // Cleanup (async)
     // -------------------------
-    cudaFreeAsync(d_input_indices, stream);
     cudaFreeAsync(embedding_output, stream);
     cudaFreeAsync(quantized_embedding_int8, stream);
 

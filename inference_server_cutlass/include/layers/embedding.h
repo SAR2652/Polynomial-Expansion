@@ -19,8 +19,6 @@ class Embedding : public Layer
         // forward now takes void*
         void forward(int* input_indices, int batch_size,
                     int sequence_length, void* output,
-                    int8_t* quantized_embedding_int8,
+                    // int8_t* quantized_embedding_int8,
                     cudaStream_t stream);
-
-        float get_embedding_scale();
 };
