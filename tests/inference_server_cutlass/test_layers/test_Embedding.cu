@@ -63,7 +63,7 @@ int main()
     const int sequence_length = 3;
     int total_tokens = batch_size * sequence_length;
 
-    std::vector<int> h_input_indices = {0, 1, 2, 1, 0, 3};
+    std::vector<int> h_input_indices = {1, 6, 3, 2, 5, 4};
 
     int* d_input_indices;
     cudaMallocAsync(&d_input_indices, total_tokens * sizeof(int), stream);
@@ -80,9 +80,9 @@ int main()
     // Allocate embedding output
     // -------------------------
     void* embedding_output = nullptr;
-    int mul_factor = (embedding_dtype == "float16")
-                        ? sizeof(__half)
-                        : sizeof(__nv_bfloat16);
+    int mul_factor = (embedding_dtype == "float32")  ? sizeof(float)
+                   : (embedding_dtype == "float16")  ? sizeof(__half)
+                   : sizeof(__nv_bfloat16);
 
     int total_embedding_size = total_tokens * embedding_shape[1];
 
@@ -104,60 +104,11 @@ int main()
         stream
     );
 
-    cudaFreeAsync(d_input_indices, stream);
-
-    auto [blocks, threads] = get_threads_and_blocks(total_tokens, 256);
-
-    // -------------------------
-    // Allocate quantized int8 buffer
-    // -------------------------
-    int8_t* quantized_embedding_int8;
-    cudaMallocAsync(
-        &quantized_embedding_int8,
-        total_embedding_size * sizeof(int8_t),
-        stream
-    );
-
-    if(embedding_dtype == "float16")
-    {
-        quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
-            static_cast<__half*>(embedding_output),
-            quantized_embedding_int8,
-            total_tokens,
-            1.0f / embedding_scale
-        );
-    }
-    else if(embedding_dtype == "bfloat16")
-    {
-        quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
-            static_cast<__nv_bfloat16*>(embedding_output),
-            quantized_embedding_int8,
-            total_tokens,
-            1.0f / embedding_scale
-        );
-    }
-    // quantize_to_int8<<<blocks, threads, 0, stream>>>(   // <-- stream
-        //     static_cast<__half*>(output),
-        //     quantized_embedding_int8,
-        //     total_tokens,
-        //     new_embedding_scale
-        // );
-
-    // cudaError_t err = cudaGetLastError();
-    // if (err != cudaSuccess) {
-    //     std::cerr << "Pre-LSTM CUDA error: " << cudaGetErrorString(err) << "\n";
-    // }
-    // cudaDeviceSynchronize();
-    // err = cudaGetLastError();
-    // if (err != cudaSuccess) {
-    //     std::cerr << "Post-sync CUDA error: " << cudaGetErrorString(err) << "\n";
-    // }
-
     // -------------------------
     // Cleanup (async)
     // -------------------------
+    cudaFreeAsync(d_input_indices, stream);
     cudaFreeAsync(embedding_output, stream);
-    cudaFreeAsync(quantized_embedding_int8, stream);
 
     // Ensure all work is done
     cudaStreamSynchronize(stream);
