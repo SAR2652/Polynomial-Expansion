@@ -21,3 +21,4 @@ python -m src.jax_implementation.ddp_train \
     --bidirectional \
     --profile \
     --disable_wandb \
+    --ddp
