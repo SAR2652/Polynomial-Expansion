@@ -9,7 +9,7 @@
 #     --learning_rate 1e-4 \
 #     --bidirectional
 
-python -m jax_implementation.ddp_train \
+python -m src.jax_implementation.ddp_train \
     --input_dir /kaggle/input/polynomialexpansion \
     --output_dir /kaggle/working/output \
     --tokenizer_filepath /kaggle/input/polynomialexpansion/tokenizer.joblib \

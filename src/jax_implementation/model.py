@@ -40,8 +40,8 @@ class EncoderFLAX(nn.Module):
         # print('outputs organized')
 
         if self.bidirectional:
-            bkwd_hidden = jnp.copy(fwd_hidden)
-            bkwd_cell = jnp.copy(fwd_cell)
+            bkwd_hidden = jnp.zeros((batch_size, self.hidden_dim))
+            bkwd_cell = jnp.zeros((batch_size, self.hidden_dim))
             backward_outputs = []
             # Iterate over sequence
             for t in range(seq_len - 1, -1, -1):
@@ -49,6 +49,7 @@ class EncoderFLAX(nn.Module):
                     (bkwd_hidden, bkwd_cell), embeddings[:, t, :])
                 backward_outputs.append(bkwd_hidden)
 
+            backward_outputs = backward_outputs[::-1]  # align t=0..seq_len-1
             backward_outputs = jnp.stack(backward_outputs, axis=1)
             outputs = jnp.concatenate([outputs, backward_outputs], axis=-1)
 
@@ -168,7 +169,7 @@ class MultiHeadAttentionFLAX(nn.Module):
                                        axis=-1)
 
         # Compute attention output
-        attention_output = jnp.einsum("bhqk, bhvd -> bhqd", attention_weights,
+        attention_output = jnp.einsum("bhqk, bhkd -> bhqd", attention_weights,
                                       V)
 
         # Restore shape: (batch_size, query_seq_len, num_heads, head_dim)
@@ -328,7 +329,9 @@ class CrossAttentionModelFLAX(nn.Module):
         encoder_outputs, decoder_hidden_state, decoder_cell_state = \
             self.encoder(inputs)
 
-        batch_size, target_len, _ = encoder_outputs.shape
+        batch_size = encoder_outputs.shape[0]
+        target_len = targets.shape[1] if targets is not None \
+            else encoder_outputs.shape[1]
         outputs = jnp.zeros((batch_size, target_len, self.vocab_size))
 
         if not self.use_cache:

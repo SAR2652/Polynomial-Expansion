@@ -254,6 +254,7 @@ def train_model(args):
                                                      batch_size)
 
     best_val_acc = float('-inf')
+    global_step = 0
     start = time.perf_counter()
 
     if profile:
@@ -317,6 +318,7 @@ def train_model(args):
                 epoch + 1,
                 args=ocp.args.StandardSave(save_state)
             )
+            best_val_acc = val_acc
 
         if profile:
             epoch_end = time.perf_counter()
