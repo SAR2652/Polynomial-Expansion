@@ -1,1 +1,1 @@
-python build_tokenizer.py --input_filepath ./output/train.txt --output_dir ./output
+python -m src.build_tokenizer --input_filepath ./output/train.txt --output_dir ./output

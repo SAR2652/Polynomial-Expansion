@@ -6,11 +6,11 @@ import pandas as pd
 import jax.numpy as jnp
 import jax.random as random
 import orbax.checkpoint as ocp
-from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
-from common_utils import load_tokenizer, collate_fn
-from jax_implementation.utils import init_train_state
-from jax_implementation.model import CrossAttentionModelFLAX
+from src.dataset import PolynomialDataset
+from src.common_utils import load_tokenizer, collate_fn
+from src.jax_implementation.utils import init_train_state
+from src.jax_implementation.model import CrossAttentionModelFLAX
 
 
 def get_arguments():

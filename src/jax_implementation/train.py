@@ -5,13 +5,13 @@ import argparse
 import pandas as pd
 from jax import random
 import jax.numpy as jnp
-from dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from orbax.checkpoint import PyTreeCheckpointer
 from flax.training import train_state, orbax_utils
-from common_utils import load_tokenizer, collate_fn
-from jax_implementation.utils import init_train_state
-from jax_implementation.model import CrossAttentionModelFLAX
+from src.dataset import PolynomialDataset
+from src.common_utils import load_tokenizer, collate_fn
+from src.jax_implementation.utils import init_train_state
+from src.jax_implementation.model import CrossAttentionModelFLAX
 from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 
 
@@ -119,12 +119,12 @@ def train_model(args):
     test_factors = test_df['factor'].tolist()
     test_expansions = test_df['expansion'].tolist()
 
-    train_dataset = PolynomialDataset(train_factors, train_expansions,
-                                      tokenizer)
-    val_dataset = PolynomialDataset(val_factors, val_expansions,
-                                    tokenizer)
-    test_dataset = PolynomialDataset(test_factors, test_expansions,
-                                     tokenizer)
+    train_dataset = PolynomialDataset(train_factors, tokenizer,
+                                      train_expansions)
+    val_dataset = PolynomialDataset(val_factors, tokenizer,
+                                    val_expansions)
+    test_dataset = PolynomialDataset(test_factors, tokenizer,
+                                     test_expansions)
 
     train_dataloader = DataLoader(train_dataset, shuffle=True,
                                   batch_size=batch_size, collate_fn=collate_fn)
@@ -169,7 +169,7 @@ def train_model(args):
             inputs, targets, _, _ = batch
             inputs = jnp.array(inputs, dtype=jnp.int32)
             targets = jnp.array(targets, dtype=jnp.int32)
-            state, loss = train_step(state, inputs, targets)
+            state, loss, _ = train_step(state, inputs, targets)
             running_loss += loss
             if (i + 1) % (len(train_dataloader) // 100) == 0:
                 print(f'Running Loss after {i + 1} batches = '

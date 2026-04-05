@@ -303,7 +303,7 @@ def recursively_quantize(params: Union[dict], scale_x: float,
             # and warn so the user knows the scale may not match.
             print(f"Warning: no sibling kernel found for bias '{full_key}'. "
                   f"Falling back to independent int32 quantization.")
-            from quantize_model_weights import quantize_tensor_int32
+            from src.jax_implementation.quantize_model_weights import quantize_tensor_int32
             quantized_params[k] = quantize_tensor_int32(v)
         else:
             input_scale = h_scale if in_lstm_hidden_block else scale_x
