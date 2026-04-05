@@ -20,4 +20,5 @@ python -m src.jax_implementation.ddp_train \
     --learning_rate 1e-4 \
     --bidirectional \
     --profile \
-    --disable_wandb
+    --disable_wandb \
+    --ddp

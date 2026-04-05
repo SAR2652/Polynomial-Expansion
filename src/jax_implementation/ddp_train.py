@@ -10,11 +10,11 @@ import jax.numpy as jnp
 from typing import Tuple
 import orbax.checkpoint as ocp
 from flax.training import train_state
-from dataset import PolynomialDataset
+from src.dataset import PolynomialDataset
 from torch.utils.data import DataLoader
 from flax.jax_utils import replicate, unreplicate
 from jax_implementation.model import CrossAttentionModelFLAX
-from common_utils import load_tokenizer, collate_fn, WandbCSVLogger
+from src.common_utils import load_tokenizer, collate_fn, WandbCSVLogger
 from jax_implementation.utils import eval_step, train_epoch_or_evaluate, \
     is_replicated, init_train_state
 
