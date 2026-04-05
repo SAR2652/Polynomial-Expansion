@@ -1,5 +1,12 @@
 #include "layers/Encoder.h"
 
+
+bool check_for_bkwd_lstm()
+{
+    return this.bkwd_lstm;
+}
+
+
 Encoder::Encoder(const nlohmann::json encoder_metadata,
     const WeightsMetadata& metadata)
 {
@@ -43,6 +50,7 @@ Encoder::Encoder(const nlohmann::json encoder_metadata,
     
     if(encoder_metadata.contains("backward_lstm"))
     {
+        bkwd_lstm = false;
         auto encoder_bkwd_lstm_wmd = encoder_metadata["backward_lstm"];
 
         auto bkwd_kernel_tag = dtype_to_tag(
@@ -73,7 +81,29 @@ Encoder::~Encoder()
     if (backward_lstmcell) delete backward_lstmcell;
 }
 
-Encoder::forward(vector<int>& h_input_indices, cudaStream_t stream)
+
+__global__ void concat_outputs_kernel(
+    float*       out,    // [seq_len, B, 2*H]
+    const float* fwd,    // [seq_len, B, H]
+    const float* bkwd,   // [seq_len, B, H]
+    int total,           // seq_len * B * H
+    int H)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+
+    // idx encodes a (seq*B, h) pair flat over [seq_len*B, H]
+    int row = idx / H;   // which (t, b) pair
+    int h   = idx % H;
+
+    out[row * 2 * H + h]     = fwd[idx];   // first half
+    out[row * 2 * H + H + h] = bkwd[idx];  // second half
+}
+
+
+
+Encoder::forward(vector<int>& h_input_indices, float* encoder_outputs,
+    cudaStream_t stream)
 {
     int* d_input_indices;
     cudaMallocAsync(&d_input_indices, total_tokens * sizeof(int), stream);
@@ -275,6 +305,25 @@ Encoder::forward(vector<int>& h_input_indices, cudaStream_t stream)
             std::swap(bkwd_cell,   bkwd_new_cell);
         }
 
+        // concatenation step
+        int total = seq_len * batch_size * hidden_dim;
+        cudaMallocAsync(
+            &encoder_outputs,
+            seq_len * batch_size * 2 * hidden_dim * sizeof(float),
+            stream
+        );
+        int block = 256;
+        int grid  = (total + block - 1) / block;
+        concat_outputs_kernel<<<grid, block, 0, stream>>>(
+            encoder_outputs, fwd_lstm_outputs, bkwd_lstm_outputs,
+            total, hidden_dim
+        );
+        cudaFreeAsync(fwd_lstm_outputs,  stream);
+        cudaFreeAsync(bkwd_lstm_outputs, stream);
+
     }
-    
+    else
+    {
+        encoder_outputs = fwd_lstm_outputs;
+    } 
 }
