@@ -6,6 +6,19 @@
 #include <nlohmann/json.hpp>
 
 
+enum class DTypeTag { Int8, Int32, Float32 };
+
+DTypeTag dtype_to_tag(const std::string& s);
+
+template <DTypeTag> struct dtype_map;
+template <> struct dtype_map<DTypeTag::Int8>    { using type = int8_t; };
+template <> struct dtype_map<DTypeTag::Int32>   { using type = int32_t; };
+template <> struct dtype_map<DTypeTag::Float32> { using type = float; };
+
+template <DTypeTag tag>
+using dtype_t = typename dtype_map<tag>::type;
+
+
 struct TensorInfo
 {
     std::vector<int> shape;

@@ -8,7 +8,7 @@ Embedding::Embedding(const std::vector<int> shape,
                      const float scale,
                      const int offset,
                      const int size,
-                     WeightsMetadata& metadata)
+                     const WeightsMetadata& metadata)
 {
     this->shape = shape;
     this->dtype = dtype;

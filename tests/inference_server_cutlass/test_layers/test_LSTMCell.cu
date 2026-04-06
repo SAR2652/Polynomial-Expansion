@@ -9,23 +9,6 @@
 #include "layers/lstmcell.h"
 
 
-enum class DTypeTag { Int8, Int32, Float32 };
-
-inline DTypeTag dtype_to_tag(const std::string& s) {
-    if (s == "int8")  return DTypeTag::Int8;
-    if (s == "int32") return DTypeTag::Int32;
-    if (s == "float32") return DTypeTag::Float32;
-    throw std::runtime_error("unknown dtype");
-}
-
-template <DTypeTag> struct dtype_map;
-
-template <> struct dtype_map<DTypeTag::Int8>  { using type = int8_t; };
-template <> struct dtype_map<DTypeTag::Int32> { using type = int32_t; };
-template <> struct dtype_map<DTypeTag::Float32> { using type = float; };
-
-template <DTypeTag tag>
-using dtype_t = typename dtype_map<tag>::type;
 
 
 

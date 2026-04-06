@@ -5,26 +5,8 @@
 #include <typeinfo>
 #include "utils/utils.h"
 #include "utils/utils.cuh"
-#include "layers/embedding.h"
-#include "layers/lstmcell.h"
+#include "layers/Encoder.h"
 
-
-enum class DTypeTag { Int8, Int32, Float32 };
-
-inline DTypeTag dtype_to_tag(const std::string& s) {
-    if (s == "int8")    return DTypeTag::Int8;
-    if (s == "int32")   return DTypeTag::Int32;
-    if (s == "float32") return DTypeTag::Float32;
-    throw std::runtime_error("unknown dtype");
-}
-
-template <DTypeTag> struct dtype_map;
-template <> struct dtype_map<DTypeTag::Int8>    { using type = int8_t; };
-template <> struct dtype_map<DTypeTag::Int32>   { using type = int32_t; };
-template <> struct dtype_map<DTypeTag::Float32> { using type = float; };
-
-template <DTypeTag tag>
-using dtype_t = typename dtype_map<tag>::type;
 
 
 int main()
@@ -38,22 +20,6 @@ int main()
         "../../../output/weights.bin").string();
 
     WeightsMetadata* wmd = new WeightsMetadata(json_path, bin_path);
-
-    auto embedding_wmd = wmd->metadata["encoder"]["embedding"]["embedding"];
-    const std::vector<int> embedding_shape =
-        embedding_wmd["shape"].get<std::vector<int>>();
-    const std::string embedding_dtype = embedding_wmd["dtype"];
-    const int embedding_offset = embedding_wmd["offset"];
-    const int embedding_size   = embedding_wmd["size"];
-    const int embedding_dim    = embedding_shape[1];
-
-    const float scale_x = wmd->metadata["calibration"]["scale_x"];
-
-    Embedding* embedding = new Embedding(
-        embedding_shape, embedding_dtype,
-        embedding_wmd["scale"], embedding_offset,
-        embedding_size, *wmd
-    );
 
     // -------------------------
     // Prepare input
@@ -83,12 +49,29 @@ int main()
         stream
     );
 
-    
+    //--------------------------
+    // Initialize and run Encoder
+    //--------------------------
+    auto encoder_wmd = wmd->metadata["encoder"];
+    Encoder* encoder = new Encoder(encoder_wmd, wmd);
+    const float scale_x = wmd->metadata["calibration"]["scale_x"];
+
+    float* encoder_outputs;
+    cudaMallocAsync(
+        &encoder_outputs,
+        seq_len * batch_size * encoder->output_hidden_dim() * sizeof(float),
+        stream
+    );
+
+    encoder->forward(d_input_indices, encoder_outputs, batch_size, seq_len,
+        scale_x, stream);
 
     // -------------------------
     // Cleanup
     // -------------------------
+    delete encoder;
     cudaFreeAsync(d_input_indices, stream);
+    cudaFreeAsync(encoder_outputs, stream);
 
     cudaStreamSynchronize(stream);
     cudaStreamDestroy(stream);

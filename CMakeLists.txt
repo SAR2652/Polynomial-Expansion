@@ -21,6 +21,7 @@ add_library(inference_server_cutlass
     inference_server_cutlass/src/layers/embedding.cu
     # inference_server_cutlass/src/layers/linear.cu
     inference_server_cutlass/src/layers/lstmcell.cu
+    inference_server_cutlass/src/layers/Encoder.cu
 
     # ---- utils ----
     inference_server_cutlass/src/utils/utils.cpp

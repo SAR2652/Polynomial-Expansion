@@ -1,22 +1,17 @@
 #include "layers/Encoder.h"
-
-
-bool check_for_bkwd_lstm()
-{
-    return this.bkwd_lstm;
-}
+#include "utils/utils.cuh"
 
 
 Encoder::Encoder(const nlohmann::json encoder_metadata,
-    const WeightsMetadata& metadata)
+    WeightsMetadata* wmd)
 {
     auto embedding_wmd = encoder_metadata["embedding"]["embedding"];
     const std::vector<int> embedding_shape =
         embedding_wmd["shape"].get<std::vector<int>>();
-    const std::string embedding_dtype = embedding_wmd["dtype"];
+    embedding_dtype = embedding_wmd["dtype"];
     const int embedding_offset = embedding_wmd["offset"];
     const int embedding_size   = embedding_wmd["size"];
-    const int embedding_dim    = embedding_shape[1];
+    embedding_dim = embedding_shape[1];
 
     // const float scale_x = wmd->metadata["calibration"]["scale_x"];
 
@@ -50,7 +45,6 @@ Encoder::Encoder(const nlohmann::json encoder_metadata,
     
     if(encoder_metadata.contains("backward_lstm"))
     {
-        bkwd_lstm = false;
         auto encoder_bkwd_lstm_wmd = encoder_metadata["backward_lstm"];
 
         auto bkwd_kernel_tag = dtype_to_tag(
@@ -102,18 +96,11 @@ __global__ void concat_outputs_kernel(
 
 
 
-Encoder::forward(vector<int>& h_input_indices, float* encoder_outputs,
+void Encoder::forward(int* d_input_indices, float* encoder_outputs,
+    int batch_size, int seq_len, float scale_x,
     cudaStream_t stream)
 {
-    int* d_input_indices;
-    cudaMallocAsync(&d_input_indices, total_tokens * sizeof(int), stream);
-    cudaMemcpyAsync(
-        d_input_indices,
-        h_input_indices.data(),
-        total_tokens * sizeof(int),
-        cudaMemcpyHostToDevice,
-        stream
-    );
+    const int total_tokens = batch_size * seq_len;
 
     // Allocate embedding output  [total_tokens, embedding_dim]
     int mul_factor = (embedding_dtype == "float32")  ? sizeof(float)
@@ -211,7 +198,7 @@ Encoder::forward(vector<int>& h_input_indices, float* encoder_outputs,
         const int8_t* x_t =
             quantized_embedding_int8 + t * step_embedding_elems;
 
-        lstmcell->forward(
+        forward_lstmcell->forward(
             fwd_cell,
             fwd_hidden,
             x_t,
@@ -236,7 +223,14 @@ Encoder::forward(vector<int>& h_input_indices, float* encoder_outputs,
         std::swap(fwd_cell,   fwd_new_cell);
     }
 
-    if(backward_lstm)
+    cudaFreeAsync(fwd_hidden,     stream);
+    cudaFreeAsync(fwd_cell,       stream);
+    cudaFreeAsync(fwd_new_hidden, stream);
+    cudaFreeAsync(fwd_new_cell,   stream);
+    cudaFreeAsync(embedding_output, stream);
+    cudaFreeAsync(quantized_embedding_int8, stream);
+
+    if(backward_lstmcell)
     {
         // Double-buffer h and c: fwd_* is the current state,
         // new_* receives the next state; pointers are swapped after each step.
@@ -269,18 +263,13 @@ Encoder::forward(vector<int>& h_input_indices, float* encoder_outputs,
             stream
         );
 
-        // -------------------------
-        // Iterate over sequence  (mirrors the Python loop above)
-        // -------------------------
-        const int step_embedding_elems = batch_size * embedding_dim;
-
-        for (int t = seqlen - 1; t >= 0; t--) {
+        for (int t = seq_len - 1; t >= 0; t--) {
             // x_t: quantized embeddings for this timestep
             // [batch, embedding_dim]
             const int8_t* x_t =
                 quantized_embedding_int8 + t * step_embedding_elems;
 
-            lstmcell->forward(
+            backward_lstmcell->forward(
                 bkwd_cell,
                 bkwd_hidden,
                 x_t,
@@ -294,7 +283,7 @@ Encoder::forward(vector<int>& h_input_indices, float* encoder_outputs,
             // outputs.append(fwd_hidden)  →  copy new_hidden into outputs[t]
             cudaMemcpyAsync(
                 bkwd_lstm_outputs + t * batch_size * hidden_dim,
-                new_hidden,
+                bkwd_new_hidden,
                 batch_size * hidden_dim * sizeof(float),
                 cudaMemcpyDeviceToDevice,
                 stream
@@ -305,13 +294,13 @@ Encoder::forward(vector<int>& h_input_indices, float* encoder_outputs,
             std::swap(bkwd_cell,   bkwd_new_cell);
         }
 
+        cudaFreeAsync(bkwd_hidden,     stream);
+        cudaFreeAsync(bkwd_cell,       stream);
+        cudaFreeAsync(bkwd_new_hidden, stream);
+        cudaFreeAsync(bkwd_new_cell,   stream);
+
         // concatenation step
         int total = seq_len * batch_size * hidden_dim;
-        cudaMallocAsync(
-            &encoder_outputs,
-            seq_len * batch_size * 2 * hidden_dim * sizeof(float),
-            stream
-        );
         int block = 256;
         int grid  = (total + block - 1) / block;
         concat_outputs_kernel<<<grid, block, 0, stream>>>(
@@ -324,6 +313,13 @@ Encoder::forward(vector<int>& h_input_indices, float* encoder_outputs,
     }
     else
     {
-        encoder_outputs = fwd_lstm_outputs;
-    } 
+        cudaMemcpyAsync(
+            encoder_outputs,
+            fwd_lstm_outputs,
+            seq_len * batch_size * hidden_dim * sizeof(float),
+            cudaMemcpyDeviceToDevice,
+            stream
+        );
+        cudaFreeAsync(fwd_lstm_outputs, stream);
+    }
 }

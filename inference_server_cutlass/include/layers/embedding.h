@@ -12,7 +12,7 @@ class Embedding : public Layer
     public:
         Embedding(const std::vector<int> shape, const std::string dtype,
                   const float scale, const int offset, const int size,
-                  WeightsMetadata& metadata);
+                  const WeightsMetadata& metadata);
 
         ~Embedding();
 
