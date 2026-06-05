@@ -77,10 +77,10 @@ Encoder::~Encoder()
 
 
 __global__ void concat_outputs_kernel(
-    float*       out,    // [seq_len, B, 2*H]
-    const float* fwd,    // [seq_len, B, H]
-    const float* bkwd,   // [seq_len, B, H]
-    int total,           // seq_len * B * H
+    float*       out,    // [B, seq_len, 2*H]
+    const float* fwd,    // [B, seq_len, H]
+    const float* bkwd,   // [B, seq_len, H]
+    int total,           // B* seq_len * H
     int H)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -180,7 +180,7 @@ void Encoder::forward(int* d_input_indices, float* encoder_outputs,
     cudaMemsetAsync(fwd_hidden, 0, batch_size * hidden_dim * sizeof(float), stream);
     cudaMemsetAsync(fwd_cell,   0, batch_size * hidden_dim * sizeof(float), stream);
 
-    // outputs[t] holds fwd_hidden after step t  →  shape [seq_len, batch, hidden]
+    // outputs[t] holds fwd_hidden after step t  →  shape [batch, seq_len, hidden]
     float* fwd_lstm_outputs;
     cudaMallocAsync(
         &fwd_lstm_outputs,
@@ -209,11 +209,16 @@ void Encoder::forward(int* d_input_indices, float* encoder_outputs,
             stream
         );
 
-        // outputs.append(fwd_hidden)  →  copy new_hidden into outputs[t]
-        cudaMemcpyAsync(
-            fwd_lstm_outputs + t * batch_size * hidden_dim,
+        // outputs.append(fwd_hidden)  →  scatter new_hidden into outputs[:, t, :]
+        // dst pitch = seq_len * hidden_dim so each batch row lands at
+        // b * seq_len * hidden_dim + t * hidden_dim  →  [batch, seq_len, hidden]
+        cudaMemcpy2DAsync(
+            fwd_lstm_outputs + t * hidden_dim,
+            seq_len * hidden_dim * sizeof(float),
             fwd_new_hidden,
-            batch_size * hidden_dim * sizeof(float),
+            hidden_dim * sizeof(float),
+            hidden_dim * sizeof(float),
+            batch_size,
             cudaMemcpyDeviceToDevice,
             stream
         );
@@ -254,8 +259,8 @@ void Encoder::forward(int* d_input_indices, float* encoder_outputs,
         cudaMemsetAsync(bkwd_cell, 0, batch_size * hidden_dim * sizeof(float),
         stream);
 
-        // outputs[t] holds fwd_hidden after step t  →
-        // shape [seq_len, batch, hidden]
+        // outputs[t] holds bkwd_hidden after step t  →
+        // shape [batch, seq_len, hidden]
         float* bkwd_lstm_outputs;
         cudaMallocAsync(
             &bkwd_lstm_outputs,
@@ -280,11 +285,14 @@ void Encoder::forward(int* d_input_indices, float* encoder_outputs,
                 stream
             );
 
-            // outputs.append(fwd_hidden)  →  copy new_hidden into outputs[t]
-            cudaMemcpyAsync(
-                bkwd_lstm_outputs + t * batch_size * hidden_dim,
+            // outputs.append(bkwd_hidden)  →  scatter new_hidden into outputs[:, t, :]
+            cudaMemcpy2DAsync(
+                bkwd_lstm_outputs + t * hidden_dim,
+                seq_len * hidden_dim * sizeof(float),
                 bkwd_new_hidden,
-                batch_size * hidden_dim * sizeof(float),
+                hidden_dim * sizeof(float),
+                hidden_dim * sizeof(float),
+                batch_size,
                 cudaMemcpyDeviceToDevice,
                 stream
             );

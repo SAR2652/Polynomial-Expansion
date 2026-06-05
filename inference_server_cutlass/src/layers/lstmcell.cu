@@ -149,6 +149,8 @@ __global__ void quantize_fp32_to_int8_kernel(
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= total) return;
+    // input float value multiplied with 1/quant_scale rounded off to nearest
+    // integer
     float v = rintf(in[idx] * inv_scale);
     out[idx] = (int8_t)fmaxf(-128.f, fminf(127.f, v));
 }
@@ -168,7 +170,9 @@ __global__ void add_and_act_kernel(
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= total) return;
+    // typecase to float and multiply with individual weight matrix scales
     float v = (float)xWx[idx] * scale_xWx + (float)hWh_b[idx] * scale_hWh_b;
+    // apply sigmoid or tanh
     if (use_sigmoid) v = 1.f / (1.f + expf(-v));
     else             v = tanhf(v);
     gate_out[idx] = v;
@@ -233,12 +237,16 @@ void run_gate(
     {
         Gemm gemm_op;
         typename Gemm::Arguments args(
-            {M, N, Kx},
-            {x,  Kx},
-            {Wx, N},
-            {nullptr, N},
-            {xWx_buf, N},
-            {1.0f, 0.0f}
+            {M, N, Kx},     // M = rows of output
+                            // N = cols of output
+                            // Kx = Inner dim
+                            // Shape of operation = [M, Kx] x [Kx, N] -> [M, N]
+                            
+            {x,  Kx},       // Element x[m][kx] = ptr[m * Kx + kx] - RowMajor
+            {Wx, N},        // Element Wx[n][kx] = ptr[n * N + kx] - ColumnMajor
+            {nullptr, N},   // no bias, hence nullptr. N is leading dim of output
+            {xWx_buf, N},   // (x @ Wx)[m][n] = ptr[m * N + n]. N is leading dimension
+            {1.0f, 0.0f}    // D = 1.0 * (A x B) + 0.0 * C
         );
         gemm_op.initialize(args, nullptr, stream);
         gemm_op(stream);
