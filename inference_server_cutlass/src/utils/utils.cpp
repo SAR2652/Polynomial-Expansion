@@ -5,6 +5,7 @@ DTypeTag dtype_to_tag(const std::string& s) {
     if (s == "int8")    return DTypeTag::Int8;
     if (s == "int32")   return DTypeTag::Int32;
     if (s == "float32") return DTypeTag::Float32;
+    if (s == "bfloat16") return DTypeTag::BFloat16;
     throw std::runtime_error("unknown dtype");
 }
 

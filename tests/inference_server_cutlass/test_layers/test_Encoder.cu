@@ -53,18 +53,25 @@ int main()
     // Initialize and run Encoder
     //--------------------------
     auto encoder_wmd = wmd->metadata["encoder"];
-    Encoder* encoder = new Encoder(encoder_wmd, wmd);
+    Encoder<int8_t, int32_t>* encoder = new Encoder<int8_t, int32_t>(
+        encoder_wmd, wmd);
     const float scale_x = wmd->metadata["calibration"]["scale_x"];
 
-    float* encoder_outputs;
+    float *encoder_outputs, *encoder_hidden, *encoder_cell;
     cudaMallocAsync(
         &encoder_outputs,
         seq_len * batch_size * encoder->output_hidden_dim() * sizeof(float),
         stream
     );
+    cudaMallocAsync(&encoder_hidden,
+        batch_size * encoder->output_hidden_dim() * sizeof(float),
+        stream);
+    cudaMallocAsync(&encoder_cell,
+        batch_size * encoder->output_hidden_dim() * sizeof(float),
+        stream);
 
-    encoder->forward(d_input_indices, encoder_outputs, batch_size, seq_len,
-        scale_x, stream);
+    encoder->forward(d_input_indices, encoder_outputs, encoder_hidden,
+        encoder_cell, batch_size, seq_len, scale_x, stream);
 
     // -------------------------
     // Cleanup
@@ -72,6 +79,8 @@ int main()
     delete encoder;
     cudaFreeAsync(d_input_indices, stream);
     cudaFreeAsync(encoder_outputs, stream);
+    cudaFreeAsync(encoder_hidden, stream);
+    cudaFreeAsync(encoder_cell, stream);
 
     cudaStreamSynchronize(stream);
     cudaStreamDestroy(stream);

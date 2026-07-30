@@ -2,7 +2,8 @@
 #include "utils/utils.cuh"
 
 
-Encoder::Encoder(const nlohmann::json encoder_metadata,
+template <typename KernelType, typename BiasType>
+Encoder<KernelType, BiasType>::Encoder(const nlohmann::json encoder_metadata,
     WeightsMetadata* wmd)
 {
     auto embedding_wmd = encoder_metadata["embedding"]["embedding"];
@@ -35,10 +36,10 @@ Encoder::Encoder(const nlohmann::json encoder_metadata,
 
     if (fwd_kernel_tag == DTypeTag::Int8 && fwd_bias_tag == DTypeTag::Int32)
     {
-        using KernelType = int8_t;
-        using BiasType   = int32_t;
+        using LSTMKernelType = int8_t;
+        using LSTMBiasType   = int32_t;
 
-        forward_lstmcell = new LSTMCell<KernelType, BiasType>(
+        forward_lstmcell = new LSTMCell<LSTMKernelType, LSTMBiasType>(
             encoder_fwd_lstm_wmd, *wmd
         );
     }
@@ -57,10 +58,10 @@ Encoder::Encoder(const nlohmann::json encoder_metadata,
         if (bkwd_kernel_tag == DTypeTag::Int8 &&
             bkwd_bias_tag == DTypeTag::Int32)
         {
-            using KernelType = int8_t;
-            using BiasType   = int32_t;
+            using LSTMKernelType = int8_t;
+            using LSTMBiasType   = int32_t;
 
-            backward_lstmcell = new LSTMCell<KernelType, BiasType>(
+            backward_lstmcell = new LSTMCell<LSTMKernelType, LSTMBiasType>(
                 encoder_bkwd_lstm_wmd, *wmd
             );
         }
@@ -68,7 +69,8 @@ Encoder::Encoder(const nlohmann::json encoder_metadata,
 }
 
 
-Encoder::~Encoder()
+template <typename KernelType, typename BiasType>
+Encoder<KernelType, BiasType>::~Encoder()
 {
     delete embedding;
     delete forward_lstmcell;
@@ -96,8 +98,10 @@ __global__ void concat_outputs_kernel(
 
 
 
-void Encoder::forward(int* d_input_indices, float* encoder_outputs,
-    int batch_size, int seq_len, float scale_x,
+template <typename KernelType, typename BiasType>
+void Encoder<KernelType, BiasType>::forward(int* d_input_indices,
+    float* encoder_outputs, float* encoder_hidden,
+    float* encoder_cell, int batch_size, int seq_len, float scale_x,
     cudaStream_t stream)
 {
     const int total_tokens = batch_size * seq_len;
@@ -135,25 +139,25 @@ void Encoder::forward(int* d_input_indices, float* encoder_outputs,
     // Quantize entire embedding output → INT8
     // -------------------------
     {
-        int block = 256;
-        int grid  = (total_embedding_size + block - 1) / block;
+        int threads = 256;
+        int blocks  = (total_embedding_size + threads - 1) / threads;
         float inv_scale = 1.0f / scale_x;
         if (embedding_dtype == "bfloat16") {
-            quantize_to_int8<<<grid, block, 0, stream>>>(
+            quantize_to_int8<<<blocks, threads, 0, stream>>>(
                 static_cast<const __nv_bfloat16*>(embedding_output),
                 quantized_embedding_int8,
                 total_embedding_size,
                 inv_scale
             );
         } else if (embedding_dtype == "float16") {
-            quantize_to_int8<<<grid, block, 0, stream>>>(
+            quantize_to_int8<<<blocks, threads, 0, stream>>>(
                 static_cast<const __half*>(embedding_output),
                 quantized_embedding_int8,
                 total_embedding_size,
                 inv_scale
             );
         } else if (embedding_dtype == "float32") {
-            quantize_to_int8<<<grid, block, 0, stream>>>(
+            quantize_to_int8<<<blocks, threads, 0, stream>>>(
                 static_cast<const float*>(embedding_output),
                 quantized_embedding_int8,
                 total_embedding_size,
@@ -171,14 +175,20 @@ void Encoder::forward(int* d_input_indices, float* encoder_outputs,
     float* fwd_new_hidden;
     float* fwd_new_cell;
 
-    cudaMallocAsync(&fwd_hidden, batch_size * hidden_dim * sizeof(float), stream);
-    cudaMallocAsync(&fwd_cell,   batch_size * hidden_dim * sizeof(float), stream);
-    cudaMallocAsync(&fwd_new_hidden, batch_size * hidden_dim * sizeof(float), stream);
-    cudaMallocAsync(&fwd_new_cell,   batch_size * hidden_dim * sizeof(float), stream);
+    cudaMallocAsync(&fwd_hidden, batch_size * hidden_dim * sizeof(float),
+    stream);
+    cudaMallocAsync(&fwd_cell,   batch_size * hidden_dim * sizeof(float),
+    stream);
+    cudaMallocAsync(&fwd_new_hidden, batch_size * hidden_dim * sizeof(float),
+    stream);
+    cudaMallocAsync(&fwd_new_cell,   batch_size * hidden_dim * sizeof(float),
+    stream);
 
     // Zero-initialise h_0 and c_0
-    cudaMemsetAsync(fwd_hidden, 0, batch_size * hidden_dim * sizeof(float), stream);
-    cudaMemsetAsync(fwd_cell,   0, batch_size * hidden_dim * sizeof(float), stream);
+    cudaMemsetAsync(fwd_hidden, 0, batch_size * hidden_dim * sizeof(float),
+    stream);
+    cudaMemsetAsync(fwd_cell,   0, batch_size * hidden_dim * sizeof(float),
+    stream);
 
     // outputs[t] holds fwd_hidden after step t  →  shape [batch, seq_len, hidden]
     float* fwd_lstm_outputs;
@@ -228,8 +238,6 @@ void Encoder::forward(int* d_input_indices, float* encoder_outputs,
         std::swap(fwd_cell,   fwd_new_cell);
     }
 
-    cudaFreeAsync(fwd_hidden,     stream);
-    cudaFreeAsync(fwd_cell,       stream);
     cudaFreeAsync(fwd_new_hidden, stream);
     cudaFreeAsync(fwd_new_cell,   stream);
     cudaFreeAsync(embedding_output, stream);
@@ -302,19 +310,40 @@ void Encoder::forward(int* d_input_indices, float* encoder_outputs,
             std::swap(bkwd_cell,   bkwd_new_cell);
         }
 
-        cudaFreeAsync(bkwd_hidden,     stream);
-        cudaFreeAsync(bkwd_cell,       stream);
         cudaFreeAsync(bkwd_new_hidden, stream);
         cudaFreeAsync(bkwd_new_cell,   stream);
 
         // concatenation step
-        int total = seq_len * batch_size * hidden_dim;
-        int block = 256;
-        int grid  = (total + block - 1) / block;
-        concat_outputs_kernel<<<grid, block, 0, stream>>>(
-            encoder_outputs, fwd_lstm_outputs, bkwd_lstm_outputs,
-            total, hidden_dim
-        );
+        {
+            const int threads = 256;
+
+            // Encoder Outputs
+            int total = seq_len * batch_size * hidden_dim;
+            int blocks = (total + threads - 1) / threads;
+            concat_outputs_kernel<<<blocks, threads, 0, stream>>>(
+                encoder_outputs, fwd_lstm_outputs, bkwd_lstm_outputs,
+                total, hidden_dim
+            );
+
+            total = batch_size * hidden_dim;
+            blocks = (total + threads - 1) / threads;
+
+            // Decoder Initial Hidden/Encoder Final Hidden
+            concat_outputs_kernel<<<blocks, threads, 0, stream>>>(
+                encoder_hidden, fwd_hidden, bkwd_hidden,
+                total, hidden_dim
+            );
+
+            // Decoder Initial Cell/Encoder Final Cell
+            concat_outputs_kernel<<<blocks, threads, 0, stream>>>(
+                encoder_cell, fwd_cell, bkwd_cell,
+                total, hidden_dim
+            );
+        }
+
+        cudaFreeAsync(bkwd_hidden,     stream);
+        cudaFreeAsync(bkwd_cell,       stream);
+
         cudaFreeAsync(fwd_lstm_outputs,  stream);
         cudaFreeAsync(bkwd_lstm_outputs, stream);
 
@@ -328,6 +357,25 @@ void Encoder::forward(int* d_input_indices, float* encoder_outputs,
             cudaMemcpyDeviceToDevice,
             stream
         );
+        cudaMemcpyAsync(
+            encoder_hidden,
+            fwd_hidden,
+            batch_size * hidden_dim * sizeof(float),
+            cudaMemcpyDeviceToDevice,
+            stream
+        );
+        cudaMemcpyAsync(
+            encoder_cell,
+            fwd_cell,
+            batch_size * hidden_dim * sizeof(float),
+            cudaMemcpyDeviceToDevice,
+            stream
+        );
         cudaFreeAsync(fwd_lstm_outputs, stream);
     }
+
+    cudaFreeAsync(fwd_hidden, stream);
+    cudaFreeAsync(fwd_cell, stream);
 }
+
+template class Encoder<int8_t, int32_t>;

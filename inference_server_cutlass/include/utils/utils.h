@@ -4,9 +4,10 @@
 #include <string>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <cuda_bf16.h>
 
 
-enum class DTypeTag { Int8, Int32, Float32 };
+enum class DTypeTag {Int8, Int32, Float32, BFloat16};
 
 DTypeTag dtype_to_tag(const std::string& s);
 
@@ -14,6 +15,7 @@ template <DTypeTag> struct dtype_map;
 template <> struct dtype_map<DTypeTag::Int8>    { using type = int8_t; };
 template <> struct dtype_map<DTypeTag::Int32>   { using type = int32_t; };
 template <> struct dtype_map<DTypeTag::Float32> { using type = float; };
+template <> struct dtype_map<DTypeTag::BFloat16> {using type = __nv_bfloat16;};
 
 template <DTypeTag tag>
 using dtype_t = typename dtype_map<tag>::type;

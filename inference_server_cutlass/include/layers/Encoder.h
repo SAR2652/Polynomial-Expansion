@@ -2,6 +2,8 @@
 #include "embedding.h"
 #include "lstmcell.h"
 
+
+template <typename KernelType, typename BiasType>
 class Encoder
 {
     private:
@@ -9,8 +11,8 @@ class Encoder
         std::string embedding_dtype;
         int embedding_dim;
 
-        LSTMCell<int8_t, int32_t>* forward_lstmcell;
-        LSTMCell<int8_t, int32_t>* backward_lstmcell = nullptr;
+        LSTMCell<KernelType, BiasType>* forward_lstmcell;
+        LSTMCell<KernelType, BiasType>* backward_lstmcell = nullptr;
         int hidden_dim;
 
     public:
@@ -18,12 +20,14 @@ class Encoder
             return backward_lstmcell ? 2 * hidden_dim : hidden_dim;
         }
         
+        
         Encoder(const nlohmann::json encoder_metadata,
             WeightsMetadata* wmd);
 
         ~Encoder();
 
         void forward(int* d_input_indices, float* encoder_outputs,
+            float* decoder_initial_hidden, float* decoder_initial_cell,
             int batch_size, int seq_len, float scale_x,
             cudaStream_t stream);
 

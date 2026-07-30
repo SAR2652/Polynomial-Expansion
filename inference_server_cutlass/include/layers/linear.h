@@ -1,4 +1,6 @@
+#pragma once
 #include "layer.h"
+#include "layers/gemm_config.h"
 
 
 template<typename KernelType, typename BiasType>
@@ -7,6 +9,7 @@ class Linear: public Layer
     private:
         KernelType* kernel;
         BiasType* bias;
+        typename GemmConfigSm80<KernelType, BiasType>::Gemm gemm_op;
 
     public:
         Linear(const nlohmann::json linear_metadata,

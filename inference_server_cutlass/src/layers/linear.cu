@@ -41,19 +41,21 @@ void Linear<KernelType, BiasType>::forward(
 
     typename Gemm::Arguments args{
         {total_tokens, output_size, input_size},  // M, N, K
-        {input,  input_size},                     // A
-        {kernel, input_size},                     // B
+        {input,  input_size},                     // A (RowMajor)
+        {kernel, input_size},                     // B (ColumnMajor)
         {bias,   0},                              // C (broadcast)
         {output, output_size},                    // D
         {1, 1}                                    // alpha, beta
     };
 
-    Gemm gemm_op;
-
     size_t workspace_size = gemm_op.get_workspace_size(args);
     void* workspace = nullptr;
     if (workspace_size > 0) {
-        cudaMallocAsync(&workspace, workspace_size, stream);
+        cudaError_t err = cudaMallocAsync(&workspace, workspace_size, stream);
+        if (err != cudaSuccess) {
+            std::cerr << "workspace alloc failed\n";
+            return;
+        }
     }
 
     cutlass::Status status = gemm_op.initialize(args, workspace, stream);

@@ -1,6 +1,7 @@
 #include "layers/layer.cuh"
 #include "layers/lstmcell.h"
 #include "layers/gemm_config.h"
+#include "utils/utils.cuh"
 
 
 // LSTMCell methods
@@ -14,7 +15,11 @@ LSTMCell<KernelType, BiasType>::LSTMCell(
 
     // Calibrated scale for transiently quantizing h (float32 → int8) before GEMMs.
     // h is always stored as float32; this scale is only applied at GEMM boundaries.
-    h_quant_scale = lstm_metadata["h_scale"];
+    // Sourced from the global calibration block rather than a per-layer duplicate:
+    // encoder.forward_lstm/backward_lstm happen to carry their own "h_scale" copy
+    // (identical to calibration.h_scale), but decoder.lstm does not, so relying on
+    // the per-layer copy would throw when constructing the decoder's LSTMCell.
+    h_quant_scale = metadata.metadata["calibration"]["h_scale"];
 
     // HF
     auto hf_md = lstm_metadata["hf"];
@@ -123,39 +128,6 @@ LSTMCell<KernelType, BiasType>::~LSTMCell()
 }
 
 
-// Broadcast a 1-D bias row [N] into a 2-D matrix [M, N].
-// Each thread writes one element: out[row * N + col] = bias[col].
-template <typename BiasType>
-__global__ void broadcast_bias_kernel(
-    BiasType       *out,    // [M, N] destination
-    const BiasType *bias,   // [N]    source (one row)
-    int             M,
-    int             N)
-{
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= M * N) return;
-    out[idx] = bias[idx % N];
-}
-
-
-// Quantize a float32 vector to int8 using a fixed scale.
-// int8_val = clamp(round(float_val / scale), -128, 127)
-// inv_scale = 1.0f / scale is precomputed by the caller to avoid repeated division.
-__global__ void quantize_fp32_to_int8_kernel(
-    int8_t      *out,
-    const float *in,
-    float        inv_scale,
-    int          total)
-{
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= total) return;
-    // input float value multiplied with 1/quant_scale rounded off to nearest
-    // integer
-    float v = rintf(in[idx] * inv_scale);
-    out[idx] = (int8_t)fmaxf(-128.f, fminf(127.f, v));
-}
-
-
 // Dequantize two int32 GEMM results with their own independent scales,
 // sum them in float32, then apply sigmoid or tanh.
 //   gate = act( xWx_int32 * scale_xWx  +  hWh_b_int32 * scale_hWh_b )
@@ -229,8 +201,8 @@ void run_gate(
         int block  = 256;
         int grid   = (total + block - 1) / block;
         float inv_scale = 1.0f / h_quant_scale;
-        quantize_fp32_to_int8_kernel<<<grid, block, 0, stream>>>(
-            h_int8, h, inv_scale, total);
+        quantize_to_int8<float><<<grid, block, 0, stream>>>(
+            h, h_int8, total, inv_scale);
     }
 
     // 2) xWx_buf = x @ Wx  (int8 × int8 → int32, no bias)
@@ -253,25 +225,15 @@ void run_gate(
     }
 
     // 3) hWh_b_buf = h_int8 @ Wh + bh
-    //    Broadcast bias row [N] across all M rows of hWh_b_buf [M, N],
-    //    then fuse into GEMM with beta=1.
-    //    cudaMemcpy2DAsync cannot be used here: its src_pitch > 0 means it would
-    //    read M rows from bh, but bh has only one row (N elements) — a buffer overread.
-    {
-        int total = M * N;
-        int block = 256;
-        int grid  = (total + block - 1) / block;
-        broadcast_bias_kernel<BiasType><<<grid, block, 0, stream>>>(
-            hWh_b_buf, bh, M, N);
-    }
+    //    stride-0 on C broadcasts the [N] bias row across all M output rows.
     {
         Gemm gemm_op;
         typename Gemm::Arguments args(
             {M, N, Kh},
             {h_int8, Kh},
             {Wh, N},
-            {hWh_b_buf, N},   // C = broadcast bias
-            {hWh_b_buf, N},   // D = h_int8 @ Wh + bias
+            {bh, 0},          // C = bias, stride-0 broadcasts across M rows
+            {hWh_b_buf, N},   // D = h_int8 @ Wh + bh
             {1.0f, 1.0f}
         );
         gemm_op.initialize(args, nullptr, stream);
