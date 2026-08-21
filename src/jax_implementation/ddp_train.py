@@ -178,7 +178,7 @@ def train_model(args):
     for directory in [output_dir, ckpt_dir, logs_dir]:
         os.makedirs(directory, exist_ok=True)
     ckpt_dir = os.path.abspath(ckpt_dir)
-    old_ckpt_dir = os.path.join(old_ckpt_dir)
+    old_ckpt_dir = os.path.abspath(old_ckpt_dir)
     log_file = os.path.join(logs_dir, 'metrics_log.csv')
     tokenizer_filepath = args.tokenizer_filepath
     tokenizer = load_tokenizer(tokenizer_filepath)
