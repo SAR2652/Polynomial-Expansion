@@ -244,7 +244,8 @@ def train_model(args):
             start_epoch = latest_step
             print(f'Resumed training from checkpoint at epoch {start_epoch}')
         else:
-            print(f'No checkpoint found in {ckpt_dir}; starting from scratch')
+            print(f'No checkpoint found in {old_ckpt_dir}; starting from '
+                  'scratch')
 
     if ddp:     # replicate model state on all available GPUs
         state = replicate(state)
