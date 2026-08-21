@@ -20,9 +20,10 @@ python -m src.jax_implementation.ddp_train \
     --learning_rate 2e-4 \
     --early_stopping_patience 10 \
     --bidirectional \
-    --profile \
     --disable_wandb \
     --use_cache \
     --ddp \
     --continue_from_ckpt \
     --old_ckpt_dir ddp_kvc_results/checkpoints
+
+# --profile
