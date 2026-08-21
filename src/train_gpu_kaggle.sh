@@ -23,4 +23,6 @@ python -m src.jax_implementation.ddp_train \
     --profile \
     --disable_wandb \
     --use_cache \
-    --ddp
+    --ddp \
+    --continue_from_ckpt \
+    --old_ckpt_dir ./ddp_kvc_results/output/checkpoints

@@ -68,6 +68,9 @@ def get_training_arguments():
     parser.add_argument('--continue_from_ckpt',
                         action='store_true',
                         help='Continue training from a checkpoint')
+    parser.add_argument('--old_ckpt_dir',
+                        help='Old checkpoint directory to continue training',
+                        type=str, default='./results/output/checkpoints')
     parser.add_argument('--ckpt_dir',
                         help='Directory containing checkpoints',
                         type=str, default='checkpoints')
@@ -97,6 +100,7 @@ def get_training_arguments():
     parser.add_argument('--disable_wandb',
                         help='Disable wandb logging',
                         action='store_true')
+    parser.add_argument
     return parser.parse_args()
 
 
@@ -169,10 +173,12 @@ def train_model(args):
     input_dir = args.input_dir
     output_dir = args.output_dir
     ckpt_dir = os.path.join(output_dir, args.ckpt_dir)
+    old_ckpt_dir = os.path.join(output_dir, args.old_ckpt_dir)
     logs_dir = os.path.join(output_dir, 'logs')
     for directory in [output_dir, ckpt_dir, logs_dir]:
         os.makedirs(directory, exist_ok=True)
     ckpt_dir = os.path.abspath(ckpt_dir)
+    old_ckpt_dir = os.path.join(old_ckpt_dir)
     log_file = os.path.join(logs_dir, 'metrics_log.csv')
     tokenizer_filepath = args.tokenizer_filepath
     tokenizer = load_tokenizer(tokenizer_filepath)
@@ -186,6 +192,7 @@ def train_model(args):
     epochs = args.epochs
     batch_size = args.batch_size
     bidirectional = args.bidirectional
+    continue_from_ckpt = args.continue_from_ckpt
     teacher_force_ratio = args.teacher_force_ratio
     warmup_steps = args.warmup_steps
     warmup_epochs = args.warmup_epochs
@@ -212,15 +219,35 @@ def train_model(args):
     state = init_train_state(model, prng_key, batch_size,
                              tokenizer.MAX_SEQUENCE_LENGTH, learning_rate)
 
-    if ddp:     # replicate model state on all available GPUs
-        state = replicate(state)
-
     # Initialize model checkpointing requirements
     options = ocp.CheckpointManagerOptions(max_to_keep=2, create=True)
-    checkpoint_manager = ocp.CheckpointManager(
-        ocp.test_utils.erase_and_create_empty(ckpt_dir),
-        options=options
-    )
+    if continue_from_ckpt:
+        checkpoint_manager = ocp.CheckpointManager(old_ckpt_dir,
+                                                   options=options)
+    else:
+        checkpoint_manager = ocp.CheckpointManager(
+            ocp.test_utils.erase_and_create_empty(ckpt_dir),
+            options=options
+        )
+
+    start_epoch = 0
+    if continue_from_ckpt:
+        latest_step = checkpoint_manager.latest_step()
+        if latest_step is not None:
+            # get PyTree object to load checkpoint into
+            abstract_state = jax.tree_util.tree_map(
+                ocp.utils.to_shape_dtype_struct, state
+            )
+            state = checkpoint_manager.restore(
+                latest_step, args=ocp.args.StandardRestore(abstract_state)
+            )
+            start_epoch = latest_step
+            print(f'Resumed training from checkpoint at epoch {start_epoch}')
+        else:
+            print(f'No checkpoint found in {ckpt_dir}; starting from scratch')
+
+    if ddp:     # replicate model state on all available GPUs
+        state = replicate(state)
 
     name = 'best_model_saca'
     if bidirectional:
@@ -288,7 +315,7 @@ def train_model(args):
     else:
         logger = None
 
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
 
         if profile:
             epoch_start = time.perf_counter()
