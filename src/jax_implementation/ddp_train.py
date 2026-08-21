@@ -303,10 +303,11 @@ def train_model(args):
             profile=profile, logger=logger
         )
 
-        # val_expansions = tokenizer.batch_decode_expressions(val_preds)
-        # val_acc = compute_equivalence_accuracy(val_expansions, val_gt)
-        val_acc = (val_preds.flatten() == val_gt.flatten()).sum() * 100 / \
-            val_gt.size
+        val_pred_expansions = tokenizer.batch_decode_expressions(val_preds)
+        val_gt_expansions = tokenizer.batch_decode_expressions(val_gt)
+        val_acc = 100.0 * sum(
+            p == g for p, g in zip(val_pred_expansions, val_gt_expansions)
+        ) / len(val_gt_expansions)
 
         print(f"Epoch {epoch + 1}: Training Loss = {running_loss:.4f}, "
               f"Validation Accuracy = {val_acc:.2f}%")
@@ -378,10 +379,11 @@ def train_model(args):
         optimized_eval_step, None, num_devices, "eval",
     )
 
-    # test_expansions = tokenizer.batch_decode_expressions(test_preds)
-    # test_acc = compute_equivalence_accuracy(test_expansions, test_gt)
-    test_acc = (test_preds.flatten() == test_gt.flatten()).sum() * 100 / \
-        test_gt.size
+    test_pred_expansions = tokenizer.batch_decode_expressions(test_preds)
+    test_gt_expansions = tokenizer.batch_decode_expressions(test_gt)
+    test_acc = 100.0 * sum(
+        p == g for p, g in zip(test_pred_expansions, test_gt_expansions)
+    ) / len(test_gt_expansions)
 
     print(f"Test Accuracy = {test_acc:.2f}%")
 

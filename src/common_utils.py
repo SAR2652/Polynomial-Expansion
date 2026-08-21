@@ -85,7 +85,7 @@ class Tokenizer:
     def encode_expression(self, expression):
         """Encode a single expression into its corresponding numeric ids"""
         input_ids = self.convert_tokens_to_ids(expression)
-        input_ids.append(self.eos_token)
+        input_ids.append(self.eos_token_id)
         padding_length = self.MAX_SEQUENCE_LENGTH - len(input_ids)
         input_ids.extend([self.pad_token_id] * padding_length)
         return input_ids

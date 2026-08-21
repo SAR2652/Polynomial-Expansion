@@ -9,10 +9,11 @@
 #     --ckpt_dir /content/checkpoints
 
 
-python -m src.jax_implementation.batched_inference \
+python -m src.jax_implementation.batched_evaluation \
     --input_filepath ./output/test.csv \
     --tokenizer_filepath ./output/tokenizer.joblib \
     --hidden_dim 64 \
     --embed_dim 64 \
     --bidirectional \
-    --ckpt_dir ./output/normal/output/checkpoints
+    --ckpt_dir ./output/normal/output/checkpoints \
+    --batch_size 128
