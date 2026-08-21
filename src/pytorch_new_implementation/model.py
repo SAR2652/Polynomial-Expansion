@@ -110,7 +110,7 @@ class MultiHeadAttention(nn.Module):
         attention_output = attention_output.reshape(batch_size, query_seq_len,
                                                     self.embed_dim)
 
-        return attention_output
+        return self.out(attention_output)
 
 
 class MHADecoder(nn.Module):
@@ -543,7 +543,7 @@ class DecoderSACA(nn.Module):
         # 2. Apply Self-Attention (no mask needed for one token)
         if decoder_step > 0:
             if kv_cache is None:
-                context_embeds = self.embedding(decoder_tokens)
+                context_embeds = self.embedding(decoder_tokens[:, :decoder_step])
             else:
                 context_embeds = kv_cache[:, :decoder_step, :]
 
@@ -595,6 +595,7 @@ class CrossAttentionModel(nn.Module):
         if bidirectional:
             hidden_dim *= 2
 
+        self.decoder_hidden_dim = hidden_dim
         self.decoder = DecoderSACA(hidden_dim, num_heads, vocab_size)
         self.device = device
         self.use_cache = use_cache
@@ -617,9 +618,11 @@ class CrossAttentionModel(nn.Module):
         context_tokens = None
         kv_cache = None
         if self.use_cache:
-            kv_cache = torch.zeros(batch_size, target_len, self.hidden_dim)
+            kv_cache = torch.zeros(batch_size, target_len,
+                                   self.decoder_hidden_dim)
         else:
-            context_tokens = torch.empty(batch_size, 0)
+            context_tokens = torch.zeros(batch_size, target_len,
+                                         dtype=torch.long).to(self.device)
 
         decoder_input = torch.tensor([self.sos_token_id] * batch_size) \
             .unsqueeze(1).to(self.device)
@@ -628,7 +631,8 @@ class CrossAttentionModel(nn.Module):
 
             logits, decoder_hidden_state, decoder_cell_state = self.decoder(
                 decoder_input, encoder_outputs, decoder_hidden_state,
-                decoder_cell_state, kv_cache, context_tokens, t
+                decoder_cell_state, kv_cache=kv_cache,
+                decoder_tokens=context_tokens, decoder_step=t
             )
 
             outputs[:, t, :] = logits
@@ -645,5 +649,9 @@ class CrossAttentionModel(nn.Module):
                 # print(f'Eval Shape 1 = {decoder_input.shape}')
                 decoder_input = decoder_input.unsqueeze(1)
                 # print(f'Eval Shape 2 = {decoder_input.shape}')
+
+                if not self.use_cache:
+                    context_tokens = context_tokens.clone()
+                    context_tokens[:, t] = decoder_input.squeeze(1)
 
         return outputs

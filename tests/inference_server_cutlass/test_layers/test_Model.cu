@@ -167,7 +167,7 @@ int main()
         d_target_token,
         /*d_decoder_tokens=*/nullptr,  // unused: use_cache=true always takes
                                        // the incremental self-attention path
-        encoder_outputs,
+        encoder_outputs
         hidden_state, cell_state,
         new_hidden_state, new_cell_state,
         next_token_logits,

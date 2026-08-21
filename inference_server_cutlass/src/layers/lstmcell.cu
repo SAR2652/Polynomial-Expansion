@@ -215,7 +215,12 @@ void run_gate(
                             // Shape of operation = [M, Kx] x [Kx, N] -> [M, N]
                             
             {x,  Kx},       // Element x[m][kx] = ptr[m * Kx + kx] - RowMajor
-            {Wx, N},        // Element Wx[n][kx] = ptr[n * N + kx] - ColumnMajor
+            {Wx, Kx},       // Wx stored row-major [N, Kx] (out, in); declaring it
+                            // ColumnMajor here reads it as its transpose [Kx, N]
+                            // without an explicit transpose step. Leading dim must
+                            // be Kx (the row stride of the actual [N, Kx] buffer),
+                            // not N — using N is only "correct" by coincidence
+                            // when N == Kx (e.g. the h-gates below, always square).
             {nullptr, N},   // no bias, hence nullptr. N is leading dim of output
             {xWx_buf, N},   // (x @ Wx)[m][n] = ptr[m * N + n]. N is leading dimension
             {1.0f, 0.0f}    // D = 1.0 * (A x B) + 0.0 * C
@@ -231,7 +236,9 @@ void run_gate(
         typename Gemm::Arguments args(
             {M, N, Kh},
             {h_int8, Kh},
-            {Wh, N},
+            {Wh, Kh},         // Same Wx reasoning above: leading dim is Kh (the
+                              // hidden-kernel's row stride), which is always == N
+                              // here since h-gates project hidden_dim -> hidden_dim.
             {bh, 0},          // C = bias, stride-0 broadcasts across M rows
             {hWh_b_buf, N},   // D = h_int8 @ Wh + bh
             {1.0f, 1.0f}
