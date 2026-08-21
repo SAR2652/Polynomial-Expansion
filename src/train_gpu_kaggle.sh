@@ -17,7 +17,7 @@ python -m src.jax_implementation.ddp_train \
     --embed_dim 64 \
     --epochs 300 \
     --batch_size 1536 \
-    --learning_rate 2e-4 \
+    --learning_rate 2e-5 \
     --early_stopping_patience 10 \
     --bidirectional \
     --disable_wandb \
