@@ -86,6 +86,11 @@ def get_training_arguments():
     parser.add_argument('--warmup_epochs',
                         help='Number of warm up epochs for teacher forcing',
                         type=int, default=25)
+    parser.add_argument('--early_stopping_patience',
+                        help='Stop training if validation accuracy does '
+                        'not improve for this many consecutive epochs '
+                        '(0 disables early stopping)',
+                        type=int, default=10)
     parser.add_argument('--profile',
                         help='Profile model training using wandb',
                         action='store_true')
@@ -184,6 +189,7 @@ def train_model(args):
     teacher_force_ratio = args.teacher_force_ratio
     warmup_steps = args.warmup_steps
     warmup_epochs = args.warmup_epochs
+    early_stopping_patience = args.early_stopping_patience
     profile = args.profile
     disable_wandb = args.disable_wandb
     use_wandb = True if not disable_wandb else False
@@ -258,6 +264,7 @@ def train_model(args):
                                                      batch_size)
 
     best_val_acc = float('-inf')
+    epochs_without_improvement = 0
     global_step = 0
     start = time.perf_counter()
 
@@ -312,18 +319,23 @@ def train_model(args):
         print(f"Epoch {epoch + 1}: Training Loss = {running_loss:.4f}, "
               f"Validation Accuracy = {val_acc:.2f}%")
 
+        improved = val_acc > best_val_acc
+
         # save model state on only one GPU
-        if val_acc > best_val_acc and \
-                (not ddp or (ddp and jax.process_index() == 0)):
-            if ddp:     # get a single copy of model training state
-                save_state = unreplicate(state)
-            else:
-                save_state = state
-            checkpoint_manager.save(
-                epoch + 1,
-                args=ocp.args.StandardSave(save_state)
-            )
+        if improved:
+            if not ddp or (ddp and jax.process_index() == 0):
+                if ddp:     # get a single copy of model training state
+                    save_state = unreplicate(state)
+                else:
+                    save_state = state
+                checkpoint_manager.save(
+                    epoch + 1,
+                    args=ocp.args.StandardSave(save_state)
+                )
             best_val_acc = val_acc
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
 
         if profile:
             epoch_end = time.perf_counter()
@@ -336,6 +348,13 @@ def train_model(args):
                 "epoch_val_only_time": epoch_val_only_time,
                 "epoch": epoch + 1
             }, step=global_step)
+
+        if early_stopping_patience > 0 and \
+                epochs_without_improvement >= early_stopping_patience:
+            print(f"Validation accuracy has not improved for "
+                  f"{early_stopping_patience} consecutive epochs. "
+                  f"Stopping early after epoch {epoch + 1}.")
+            break
 
     if profile:
         logger.finish()
