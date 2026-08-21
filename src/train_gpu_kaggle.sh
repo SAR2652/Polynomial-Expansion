@@ -15,7 +15,7 @@ python -m src.jax_implementation.ddp_train \
     --tokenizer_filepath /kaggle/input/polynomialexpansion/tokenizer.joblib \
     --hidden_dim 64 \
     --embed_dim 64 \
-    --epochs 125 \
+    --epochs 300 \
     --batch_size 1536 \
     --learning_rate 2e-4 \
     --early_stopping_patience 10 \
@@ -25,4 +25,4 @@ python -m src.jax_implementation.ddp_train \
     --use_cache \
     --ddp \
     --continue_from_ckpt \
-    --old_ckpt_dir ddp_kvc_results/output/checkpoints
+    --old_ckpt_dir ddp_kvc_results/checkpoints
