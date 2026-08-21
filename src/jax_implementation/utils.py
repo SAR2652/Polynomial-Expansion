@@ -78,9 +78,10 @@ def train_epoch_or_evaluate(
         if mode == "eval":
             ground_truth_list = list()
 
+    log_interval = max(1, len(dataloader) // 100)
+
     if profile:
         step_start = time.perf_counter()
-        log_interval = max(1, len(dataloader) // 100)
         token_count = 0
 
     for step, batch in enumerate(dataloader, 0):
