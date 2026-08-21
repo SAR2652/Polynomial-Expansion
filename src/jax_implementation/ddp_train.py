@@ -100,7 +100,6 @@ def get_training_arguments():
     parser.add_argument('--disable_wandb',
                         help='Disable wandb logging',
                         action='store_true')
-    parser.add_argument
     return parser.parse_args()
 
 
@@ -224,11 +223,6 @@ def train_model(args):
     if continue_from_ckpt:
         checkpoint_manager = ocp.CheckpointManager(old_ckpt_dir,
                                                    options=options)
-    else:
-        checkpoint_manager = ocp.CheckpointManager(
-            ocp.test_utils.erase_and_create_empty(ckpt_dir),
-            options=options
-        )
 
     start_epoch = 0
     if continue_from_ckpt:
@@ -246,6 +240,11 @@ def train_model(args):
         else:
             print(f'No checkpoint found in {old_ckpt_dir}; starting from '
                   'scratch')
+
+    checkpoint_manager = ocp.CheckpointManager(
+        ocp.test_utils.erase_and_create_empty(ckpt_dir),
+        options=options
+    )
 
     if ddp:     # replicate model state on all available GPUs
         state = replicate(state)
