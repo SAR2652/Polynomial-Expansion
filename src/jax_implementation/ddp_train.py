@@ -173,7 +173,7 @@ def train_model(args):
     input_dir = args.input_dir
     output_dir = args.output_dir
     ckpt_dir = os.path.join(output_dir, args.ckpt_dir)
-    old_ckpt_dir = os.path.join(output_dir, args.old_ckpt_dir)
+    old_ckpt_dir = args.old_ckpt_dir
     logs_dir = os.path.join(output_dir, 'logs')
     for directory in [output_dir, ckpt_dir, logs_dir]:
         os.makedirs(directory, exist_ok=True)
