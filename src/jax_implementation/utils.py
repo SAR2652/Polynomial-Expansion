@@ -80,7 +80,7 @@ def train_epoch_or_evaluate(
 
     if profile:
         step_start = time.perf_counter()
-        log_interval = len(dataloader) // 100
+        log_interval = max(1, len(dataloader) // 100)
         token_count = 0
 
     for step, batch in enumerate(dataloader, 0):

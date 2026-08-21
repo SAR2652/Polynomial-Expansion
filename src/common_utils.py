@@ -102,16 +102,40 @@ class Tokenizer:
 
         return output_sequence
 
+    def _id_to_char_lookup(self):
+        """Build (and cache) a dense id -> token array for vectorized
+        batch decoding. Rebuilt only if the vocabulary has grown since the
+        last call."""
+        if getattr(self, '_id_to_char', None) is None or \
+                self._id_to_char_vocab_size != self.vocab_size:
+            max_id = max(self.id_dict.keys())
+            lut = np.empty(max_id + 1, dtype=object)
+            for token_id, token in self.id_dict.items():
+                lut[token_id] = token
+            self._id_to_char = lut
+            self._id_to_char_vocab_size = self.vocab_size
+
+        return self._id_to_char
+
     def batch_decode_expressions(self, expressions):
-        """Convert IDs to their corresponding tokens"""
+        """Convert a batch of token ID sequences to their corresponding
+        expression strings, vectorized over the whole batch instead of
+        looping token-by-token in Python."""
+        expressions = np.asarray(expressions)
+        lut = self._id_to_char_lookup()
+        seq_len = expressions.shape[1]
 
-        batch_decoded_expressions_map = map(self.decode_expression,
-                                            expressions)
+        eos_mask = expressions == self.eos_token_id
+        has_eos = eos_mask.any(axis=1)
+        first_eos = np.where(has_eos, eos_mask.argmax(axis=1), seq_len)
 
-        batch_concat_operation_map = map(''.join,
-                                         batch_decoded_expressions_map)
+        positions = np.arange(seq_len)
+        keep = (positions[None, :] < first_eos[:, None]) & \
+            ~np.isin(expressions, self.special_token_ids)
 
-        return list(batch_concat_operation_map)
+        chars = np.where(keep, lut[expressions], '')
+
+        return [''.join(row) for row in chars]
 
     def validate(self):
         for k, v in self.vocab_dict.items():
