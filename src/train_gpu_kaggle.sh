@@ -16,14 +16,15 @@ python -m src.jax_implementation.ddp_train_lr_schedule \
     --hidden_dim 64 \
     --embed_dim 64 \
     --epochs 500 \
-    --batch_size 1536 \
-    --learning_rate 1e-5 \
+    --batch_size 1024 \
+    --learning_rate 1e-4 \
     --early_stopping_patience 10 \
     --bidirectional \
     --disable_wandb \
     --use_cache \
     --ddp \
-    --continue_from_ckpt \
-    --old_ckpt_dir ddp_kvc_results/checkpoints
+    --profile
 
+# --continue_from_ckpt \
+# --old_ckpt_dir ddp_kvc_results/checkpoints
 # --profile

@@ -98,7 +98,22 @@ def train_epoch_or_evaluate(
         inputs_jnp = jnp.array(inputs, dtype=jnp.int32)
         targets_jnp = jnp.array(targets, dtype=jnp.int32)
 
+        pad_len = 0
         if ddp:
+
+            # Train batches come from a drop_last=True loader, so they're
+            # always divisible by num_devices. Eval/infer batches may not
+            # be (drop_last=False, to avoid silently skipping samples) --
+            # pad up to a full batch here and slice the padding back off
+            # the predictions below, rather than dropping real rows.
+            batch_len = inputs_jnp.shape[0]
+            pad_len = (-batch_len) % num_devices
+            if pad_len > 0:
+                inputs_jnp = jnp.concatenate(
+                    [inputs_jnp, jnp.zeros((pad_len,) + inputs_jnp.shape[1:],
+                                           dtype=inputs_jnp.dtype)],
+                    axis=0
+                )
 
             inputs_jnp = inputs_jnp.reshape(
                 num_devices, -1, tokenizer.MAX_SEQUENCE_LENGTH
@@ -128,7 +143,7 @@ def train_epoch_or_evaluate(
 
             if ddp and replicate_flag:
                 batch_preds, batch_probs = step_function(
-                    model, replicated_params, inputs
+                    model, replicated_params, inputs_jnp
                 )
             else:
                 batch_preds, batch_probs = step_function(model, params,
@@ -149,6 +164,10 @@ def train_epoch_or_evaluate(
                 batch_probs = batch_probs.reshape(
                     -1, batch_probs.shape[-2], batch_probs.shape[-1]
                 )
+
+                if pad_len > 0:
+                    batch_preds = batch_preds[:batch_len]
+                    batch_probs = batch_probs[:batch_len]
 
             predictions_list.append(batch_preds)
             probabilities_list.append(batch_probs)

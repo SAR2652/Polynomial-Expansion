@@ -80,9 +80,6 @@ def get_training_arguments():
     parser.add_argument('--ddp',
                         help='Activate Distributed Data Parallel',
                         action='store_true')
-    parser.add_argument('--teacher_force_ratio',
-                        help='Teacher force ratio',
-                        type=float, default=0.5)
     parser.add_argument('--warmup_steps',
                         help='Number of warm up steps before training',
                         type=int, default=10)
@@ -201,7 +198,6 @@ def train_model(args):
     batch_size = args.batch_size
     bidirectional = args.bidirectional
     continue_from_ckpt = args.continue_from_ckpt
-    teacher_force_ratio = args.teacher_force_ratio
     warmup_steps = args.warmup_steps
     warmup_epochs = args.warmup_epochs
     early_stopping_patience = args.early_stopping_patience
@@ -217,7 +213,7 @@ def train_model(args):
 
     model = CrossAttentionModelFLAX(
         embed_size, hidden_size, tokenizer.vocab_size, num_heads,
-        tokenizer.sos_token_id, bidirectional, use_cache, teacher_force_ratio
+        tokenizer.sos_token_id, bidirectional, use_cache
     )
 
     prng_key = random.PRNGKey(random_state)

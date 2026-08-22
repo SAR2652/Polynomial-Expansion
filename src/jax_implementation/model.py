@@ -95,7 +95,8 @@ class MultiHeadAttentionFLAX(nn.Module):
 
     def __call__(self, query: jnp.ndarray, key: jnp.ndarray = None,
                  value: jnp.ndarray = None, decoder_step: int = None,
-                 kv_cache: jnp.ndarray = None):
+                 kv_cache: jnp.ndarray = None,
+                 key_padding_mask: jnp.ndarray = None):
         batch_size, query_seq_len, _ = query.shape
 
         # Default to self-attention
@@ -165,6 +166,17 @@ class MultiHeadAttentionFLAX(nn.Module):
         # Compute scaled dot-product attention
         attention_scores = jnp.einsum("bhqd, bhkd -> bhqk", Q, K) * self.scale
 
+        if self.mode == Mode.SELF and decoder_step is not None:
+            key_len = K.shape[2]
+            valid = jnp.arange(key_len) <= decoder_step
+            attention_scores = jnp.where(valid, attention_scores, -1e9)
+
+        if key_padding_mask is not None:
+            # (batch_size, key_len) -> (batch_size, 1, 1, key_len) so it
+            # broadcasts over heads and query positions
+            mask = key_padding_mask[:, None, None, :]
+            attention_scores = jnp.where(mask, attention_scores, -1e9)
+
         # (batch_size, num_heads, query_seq_len, key_seq_len)
         attention_weights = nn.softmax(attention_scores.astype(jnp.float32),
                                        axis=-1)
@@ -223,7 +235,8 @@ class DecoderSACAFLAX(nn.Module):
                  hidden_state: jnp.ndarray, cell_state: jnp.ndarray,
                  decoder_tokens: jnp.ndarray = None, decoder_step: int = 0,
                  self_attn_kv_cache: jnp.ndarray = None,
-                 cross_attn_kv_cache: jnp.ndarray = None):
+                 cross_attn_kv_cache: jnp.ndarray = None,
+                 cross_attn_padding_mask: jnp.ndarray = None):
         """
         Args:
             target_token: (B, 1) Last generated token.
@@ -264,7 +277,8 @@ class DecoderSACAFLAX(nn.Module):
         # (B, 1, E)
         cross_attn_output, cross_attn_kv_cache = \
             self.cross_attention(self_attn_output, encoder_outputs,
-                                 encoder_outputs, kv_cache=cross_attn_kv_cache)
+                                 encoder_outputs, kv_cache=cross_attn_kv_cache,
+                                 key_padding_mask=cross_attn_padding_mask)
 
         # print(f'Cross Attn = {cross_attn_output.shape}')
 
@@ -300,7 +314,6 @@ class CrossAttentionModelFLAX(nn.Module):
     sos_token_id: int
     bidirectional: bool = False
     use_cache: bool = False
-    teacher_force_ratio: float = 0.5
 
     def setup(self):
         self.encoder = EncoderFLAX(self.vocab_size, self.enc_embed_dim,
@@ -314,7 +327,7 @@ class CrossAttentionModelFLAX(nn.Module):
 
     def __call__(self, inputs: jnp.ndarray, targets: jnp.ndarray = None,
                  eval: bool = False, curr_epoch: int = None,
-                 warmup_epochs: int = None):
+                 warmup_epochs: int = None, pad_token_id: int = None):
         """
         Args:
             inputs: (B, S) Input token indices.
@@ -329,6 +342,12 @@ class CrossAttentionModelFLAX(nn.Module):
         # Encode input sequence
         encoder_outputs, decoder_hidden_state, decoder_cell_state = \
             self.encoder(inputs)
+
+        # Mask <pad> positions in the encoder sequence so cross-attention
+        # never attends to them
+        cross_attn_padding_mask = None
+        if pad_token_id is not None:
+            cross_attn_padding_mask = inputs != pad_token_id
 
         batch_size = encoder_outputs.shape[0]
         target_len = targets.shape[1] if targets is not None \
@@ -361,7 +380,7 @@ class CrossAttentionModelFLAX(nn.Module):
             logits, decoder_hidden_state, decoder_cell_state = self.decoder(
                 decoder_input, encoder_outputs, decoder_hidden_state,
                 decoder_cell_state, context_tokens, t, self_attn_kv_cache,
-                cross_attn_kv_cache
+                cross_attn_kv_cache, cross_attn_padding_mask
             )
 
             # print(f'Logits Shape = {logits.shape}')

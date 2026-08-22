@@ -1,5 +1,6 @@
 import os
 import argparse
+import functools
 import time
 from typing import Tuple
 
@@ -19,7 +20,7 @@ from torch.utils.data import DataLoader
 from src.dataset import PolynomialDataset
 from src.jax_implementation.model import CrossAttentionModelFLAX
 from src.common_utils import load_tokenizer, collate_fn, WandbCSVLogger
-from src.jax_implementation.utils import eval_step, train_epoch_or_evaluate, \
+from src.jax_implementation.utils import train_epoch_or_evaluate, \
     is_replicated
 
 # compute_equivalence_accuracy, score
@@ -114,9 +115,6 @@ def get_training_arguments():
     parser.add_argument('--ddp',
                         help='Activate Distributed Data Parallel',
                         action='store_true')
-    parser.add_argument('--teacher_force_ratio',
-                        help='Teacher force ratio',
-                        type=float, default=0.5)
     parser.add_argument('--warmup_steps',
                         help='Number of warm up steps before training',
                         type=int, default=10)
@@ -174,7 +172,8 @@ def create_train_step_fn(ddp: bool = False, pad_token_id: int = 0):
         def loss_fn(params):
             logits = state.apply_fn({'params': params}, inputs, targets,
                                     curr_epoch=curr_epoch,
-                                    warmup_epochs=warmup_epochs)
+                                    warmup_epochs=warmup_epochs,
+                                    pad_token_id=pad_token_id)
             mask = (targets != pad_token_id).astype(jnp.float32)
             loss = optax.softmax_cross_entropy_with_integer_labels(logits,
                                                                    targets)
@@ -202,19 +201,41 @@ def create_train_step_fn(ddp: bool = False, pad_token_id: int = 0):
         jax.jit(train_step, static_argnums=(4,))
 
 
+def create_eval_step_fn(pad_token_id: int):
+    """Same as utils.eval_step, but with pad_token_id bound as a closed-over
+    constant so the encoder's <pad> positions are masked out of
+    cross-attention during eval/inference, matching the masking used in
+    training."""
+
+    @functools.partial(jax.jit, static_argnums=0)
+    def eval_step(model, params, inputs):
+        logits = model.apply({'params': params}, inputs, targets=None,
+                             eval=True, pad_token_id=pad_token_id)
+        probs = jax.nn.softmax(logits, axis=-1)
+        preds = jnp.argmax(probs, axis=-1)
+        return preds, probs
+
+    return eval_step
+
+
 def load_data_and_return_dataloader(filepath, tokenizer, batch_size,
                                     return_dataset: bool = False,
-                                    num_samples: int = 0, ddp: bool = False):
+                                    num_samples: int = 0, ddp: bool = False,
+                                    shuffle: bool = True,
+                                    drop_last: bool = None):
     df = pd.read_csv(filepath)
     if num_samples > 0:
         df = df.iloc[:num_samples, :]
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
     dataset = PolynomialDataset(factors, tokenizer, expansions)
-    # drop_last avoids a ragged final batch under DDP, whose changed shape
-    # would otherwise force pmap to retrace/recompile.
-    dataloader = DataLoader(dataset, shuffle=True, batch_size=batch_size,
-                            collate_fn=collate_fn, drop_last=ddp)
+    if drop_last is None:
+        # Training keeps a fixed per-device batch shape under DDP by
+        # dropping a ragged final batch; callers scoring val/test must
+        # pass drop_last=False explicitly so no samples are skipped.
+        drop_last = ddp
+    dataloader = DataLoader(dataset, shuffle=shuffle, batch_size=batch_size,
+                            collate_fn=collate_fn, drop_last=drop_last)
 
     if return_dataset:
         return dataloader, dataset
@@ -248,7 +269,6 @@ def train_model(args):
     batch_size = args.batch_size
     bidirectional = args.bidirectional
     continue_from_ckpt = args.continue_from_ckpt
-    teacher_force_ratio = args.teacher_force_ratio
     warmup_steps = args.warmup_steps
     warmup_epochs = args.warmup_epochs
     early_stopping_patience = args.early_stopping_patience
@@ -267,7 +287,7 @@ def train_model(args):
 
     model = CrossAttentionModelFLAX(
         embed_size, hidden_size, tokenizer.vocab_size, num_heads,
-        tokenizer.sos_token_id, bidirectional, use_cache, teacher_force_ratio
+        tokenizer.sos_token_id, bidirectional, use_cache
     )
 
     prng_key = random.PRNGKey(random_state)
@@ -332,6 +352,7 @@ def train_model(args):
     train_step = create_train_step_fn(ddp, tokenizer.pad_token_id)
     update_model = jax.pmap(apply_gradient_update, axis_name='num_devices') \
         if ddp else apply_gradient_update
+    eval_step = create_eval_step_fn(tokenizer.pad_token_id)
     optimized_eval_step = jax.pmap(eval_step, axis_name='num_devices',
                                    static_broadcasted_argnums=(0,)) \
         if ddp else eval_step
@@ -361,9 +382,13 @@ def train_model(args):
                                   batch_size=batch_size,
                                   collate_fn=collate_fn, drop_last=ddp)
 
-    # load validation data
-    val_dataloader = load_data_and_return_dataloader(val_path, tokenizer,
-                                                     batch_size, ddp=ddp)
+    # load validation data (no shuffling/dropping: the metric this drives
+    # -- checkpoint selection, LR plateau, early stopping -- must be
+    # computed over the full, stable validation set every epoch)
+    val_dataloader = load_data_and_return_dataloader(
+        val_path, tokenizer, batch_size, ddp=ddp, shuffle=False,
+        drop_last=False
+    )
 
     best_val_acc = float('-inf')
     epochs_without_improvement = 0
@@ -506,10 +531,12 @@ def train_model(args):
     else:
         model_params = params
 
-    # load and evaluate test set
+    # load and evaluate test set (score the whole set, unshuffled)
     test_path = os.path.join(input_dir, 'test.csv')
-    test_dataloader = load_data_and_return_dataloader(test_path, tokenizer,
-                                                      batch_size, ddp=ddp)
+    test_dataloader = load_data_and_return_dataloader(
+        test_path, tokenizer, batch_size, ddp=ddp, shuffle=False,
+        drop_last=False
+    )
 
     test_preds, _, test_gt = train_epoch_or_evaluate(
         (model, model_params), test_dataloader, tokenizer, ddp,

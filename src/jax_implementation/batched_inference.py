@@ -45,9 +45,6 @@ def get_arguments():
     parser.add_argument('--num_heads',
                         help='Number of Attention Heads',
                         type=int, default=4)
-    parser.add_argument('--teacher_force_ratio',
-                        help='Teacher force ratio',
-                        type=float, default=0.5)
     parser.add_argument('--use_cache',
                         help='Use KV Caching',
                         action='store_true')
@@ -64,7 +61,6 @@ def batched_inference(args):
     tokenizer_filepath = args.tokenizer_filepath
     bidirectional = args.bidirectional
     num_heads = args.num_heads
-    teacher_force_ratio = args.teacher_force_ratio
     use_cache = args.use_cache
 
     tokenizer = load_tokenizer(tokenizer_filepath)
@@ -87,7 +83,7 @@ def batched_inference(args):
 
     model = CrossAttentionModelFLAX(
         embed_dim, hidden_dim, tokenizer.vocab_size, num_heads,
-        tokenizer.sos_token_id, bidirectional, use_cache, teacher_force_ratio
+        tokenizer.sos_token_id, bidirectional, use_cache
     )
 
     # initialize random key and training state
