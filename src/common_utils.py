@@ -93,12 +93,12 @@ class Tokenizer:
     def decode_expression(self, expression):
         """Convert IDs to their corresponding tokens"""
         output_sequence = list()
-        for id in expression:
-            if id == self.eos_token_id:
+        for token_id in expression:
+            if token_id == self.eos_token_id:
                 break
-            elif id in self.special_token_ids:
+            elif token_id in self.special_token_ids:
                 continue
-            output_sequence.append(self.id_dict[id])
+            output_sequence.append(self.id_dict[token_id])
 
         return output_sequence
 

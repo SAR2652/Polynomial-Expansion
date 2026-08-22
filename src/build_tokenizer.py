@@ -34,6 +34,16 @@ def build_tokenizer(args):
 
     print('Successfully built Tokenizer!')
 
+    print('\nSpecial tokens:')
+    print(f'  pad_token = {tokenizer.pad_token!r} -> id {tokenizer.pad_token_id}')
+    print(f'  sos_token = {tokenizer.sos_token!r} -> id {tokenizer.sos_token_id}')
+    print(f'  eos_token = {tokenizer.eos_token!r} -> id {tokenizer.eos_token_id}')
+
+    print(f'\nVocab size: {tokenizer.vocab_size}')
+    print('Vocab dict (token -> id):')
+    for token, idx in sorted(tokenizer.vocab_dict.items(), key=lambda x: x[1]):
+        print(f'  {token!r:10s} -> {idx}')
+
 
 def main():
     args = get_vocabulary_arguments()

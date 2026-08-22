@@ -299,6 +299,9 @@ def train_model(args):
         learning_rate
     )
 
+    param_count = sum(x.size for x in jax.tree_util.tree_leaves(state.params))
+    print(f'Model Parameter Count = {param_count:,}')
+
     # Initialize model checkpointing requirements
     options = ocp.CheckpointManagerOptions(max_to_keep=2, create=True)
     if continue_from_ckpt:
