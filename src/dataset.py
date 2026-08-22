@@ -6,6 +6,13 @@ class PolynomialDataset(Dataset):
         self.factors = factors
         self.expansions = expansions
         self.tokenizer = tokenizer
+        # Tokenization is pure-Python and identical every epoch, so encode
+        # once here instead of redoing it on every __getitem__ call.
+        self._encoded = [
+            tokenizer.encode(factor, expansions[idx] if expansions is not
+                             None else None)
+            for idx, factor in enumerate(factors)
+        ]
 
     def __len__(self):
         return min(len(self.factors), len(self.expansions))
@@ -18,8 +25,7 @@ class PolynomialDataset(Dataset):
             expansion = self.expansions[idx]
         else:
             expansion = None
-        factor_input_ids, expansion_label_ids = \
-            self.tokenizer.encode(factor, expansion)
+        factor_input_ids, expansion_label_ids = self._encoded[idx]
         item = dict()
         item['factor'] = factor
         item['expansion'] = expansion

@@ -68,7 +68,7 @@ def train_epoch_or_evaluate(
         state = state_or_model
 
     if mode == "train":
-        running_loss = 0
+        running_loss = jnp.zeros(())
         assert update_model is not None, "update_model() must have a " \
             "function as value in 'train' mode"
 
@@ -116,11 +116,11 @@ def train_epoch_or_evaluate(
             if profile:
                 loss = loss.block_until_ready()
 
-            running_loss += loss.mean().item()
+            running_loss += loss.mean()
 
             if (step + 1) % log_interval == 0:
                 print(f'Running Loss after {step + 1} batches = '
-                      f'{running_loss:.4f}')
+                      f'{running_loss.item():.4f}')
 
             state = update_model(state, grads)
 
@@ -190,7 +190,7 @@ def train_epoch_or_evaluate(
                 token_count = 0
 
     if mode == "train":
-        return state, running_loss, global_step
+        return state, float(running_loss), global_step
     else:
         predictions_jnp = jnp.concatenate(predictions_list, axis=0)
         probabilities_jnp = jnp.concatenate(probabilities_list, axis=0)

@@ -371,12 +371,33 @@ class CrossAttentionModelFLAX(nn.Module):
             # Teacher forcing during training at all times for a fixed number
             # of epochs
             if not eval and curr_epoch is not None and \
-                    warmup_epochs is not None and curr_epoch < warmup_epochs:
-                if targets is not None:
-                    decoder_input = targets[:, t:t+1]  # Use ground truth
-                else:
+                    warmup_epochs is not None:
+                if targets is None:
                     raise ValueError("Targets required during training with "
                                      "teacher forcing.")
+
+                def teacher_forcing_branch(operand):
+                    decoder_input, context_tokens = operand
+                    return targets[:, t:t + 1].astype(jnp.int32), \
+                        context_tokens
+
+                def argmax_branch(operand):
+                    decoder_input, context_tokens = operand
+                    probs = jax.nn.softmax(logits, axis=-1)
+                    decoder_input = jnp.argmax(
+                        probs, axis=-1, keepdims=True).astype(jnp.int32)
+
+                    if not self.use_cache:
+                        context_tokens = context_tokens.at[:, t:t + 1].set(
+                            decoder_input.reshape((batch_size, 1))
+                        )
+                    return decoder_input, context_tokens
+
+                use_teacher_forcing = curr_epoch < warmup_epochs
+                decoder_input, context_tokens = jax.lax.cond(
+                    use_teacher_forcing, teacher_forcing_branch,
+                    argmax_branch, (decoder_input, context_tokens)
+                )
 
             else:
                 probs = jax.nn.softmax(logits, axis=-1)

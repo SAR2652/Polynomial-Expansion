@@ -155,12 +155,13 @@ def apply_gradient_update(state, grads):
     return state.apply_gradients(grads=grads)
 
 
-def create_train_step_fn(ddp: bool = False):
+def create_train_step_fn(ddp: bool = False, pad_token_id: int = 0):
     """
     Returns a unified training step function.
 
     Args:
         ddp (bool): If True, performs DDP-style training using `jax.pmap`.
+        pad_token_id (int): Token id to exclude from the loss.
 
     Returns:
         train_step: (state, inputs, targets) -> (state, loss, grads)
@@ -174,9 +175,12 @@ def create_train_step_fn(ddp: bool = False):
             logits = state.apply_fn({'params': params}, inputs, targets,
                                     curr_epoch=curr_epoch,
                                     warmup_epochs=warmup_epochs)
+            mask = (targets != pad_token_id).astype(jnp.float32)
             loss = optax.softmax_cross_entropy_with_integer_labels(logits,
                                                                    targets)
-            return loss.mean(), logits
+            loss = (loss * mask).sum() / mask.sum()
+
+            return loss, logits
 
         (loss, logits), grads = jax.value_and_grad(loss_fn,
                                                    has_aux=True)(state.params)
@@ -190,22 +194,27 @@ def create_train_step_fn(ddp: bool = False):
         return state, loss, grads
 
     # Compile for performance
+    # Note: curr_epoch must NOT be static - it changes every epoch, and
+    # marking it static forces a full recompile of train_step each epoch.
     return jax.pmap(train_step, axis_name='num_devices',
-                    static_broadcasted_argnums=(3, 4)) if ddp else \
-        jax.jit(train_step, static_argnums=(3, 4))
+                    in_axes=(0, 0, 0, None),
+                    static_broadcasted_argnums=(4,)) if ddp else \
+        jax.jit(train_step, static_argnums=(4,))
 
 
 def load_data_and_return_dataloader(filepath, tokenizer, batch_size,
                                     return_dataset: bool = False,
-                                    num_samples: int = 0):
+                                    num_samples: int = 0, ddp: bool = False):
     df = pd.read_csv(filepath)
     if num_samples > 0:
         df = df.iloc[:num_samples, :]
     factors = df['factor'].tolist()
     expansions = df['expansion'].tolist()
     dataset = PolynomialDataset(factors, tokenizer, expansions)
-    dataloader = DataLoader(dataset, shuffle=True,
-                            batch_size=batch_size, collate_fn=collate_fn)
+    # drop_last avoids a ragged final batch under DDP, whose changed shape
+    # would otherwise force pmap to retrace/recompile.
+    dataloader = DataLoader(dataset, shuffle=True, batch_size=batch_size,
+                            collate_fn=collate_fn, drop_last=ddp)
 
     if return_dataset:
         return dataloader, dataset
@@ -320,7 +329,7 @@ def train_model(args):
     name += '_'
 
     # initialize model training/evaluation and update functions
-    train_step = create_train_step_fn(ddp)
+    train_step = create_train_step_fn(ddp, tokenizer.pad_token_id)
     update_model = jax.pmap(apply_gradient_update, axis_name='num_devices') \
         if ddp else apply_gradient_update
     optimized_eval_step = jax.pmap(eval_step, axis_name='num_devices',
@@ -331,7 +340,7 @@ def train_model(args):
     val_path = os.path.join(input_dir, 'validation.csv')
 
     train_dataloader, train_dataset = load_data_and_return_dataloader(
-        train_path, tokenizer, batch_size, return_dataset=True
+        train_path, tokenizer, batch_size, return_dataset=True, ddp=ddp
     )
 
     # create a fresh iterator
@@ -349,11 +358,12 @@ def train_model(args):
 
     # recreate dataloader for training data
     train_dataloader = DataLoader(train_dataset, shuffle=True,
-                                  batch_size=batch_size, collate_fn=collate_fn)
+                                  batch_size=batch_size,
+                                  collate_fn=collate_fn, drop_last=ddp)
 
     # load validation data
     val_dataloader = load_data_and_return_dataloader(val_path, tokenizer,
-                                                     batch_size)
+                                                     batch_size, ddp=ddp)
 
     best_val_acc = float('-inf')
     epochs_without_improvement = 0
@@ -499,7 +509,7 @@ def train_model(args):
     # load and evaluate test set
     test_path = os.path.join(input_dir, 'test.csv')
     test_dataloader = load_data_and_return_dataloader(test_path, tokenizer,
-                                                      batch_size)
+                                                      batch_size, ddp=ddp)
 
     test_preds, _, test_gt = train_epoch_or_evaluate(
         (model, model_params), test_dataloader, tokenizer, ddp,
