@@ -125,12 +125,12 @@ def get_training_arguments():
                         help='Stop training if validation accuracy does '
                         'not improve for this many consecutive epochs '
                         '(0 disables early stopping)',
-                        type=int, default=10)
+                        type=int, default=20)
     parser.add_argument('--lr_patience',
                         help='Reduce learning rate if validation accuracy '
                         'does not improve for this many consecutive '
                         'epochs (0 disables LR scheduling)',
-                        type=int, default=3)
+                        type=int, default=5)
     parser.add_argument('--lr_decay_factor',
                         help='Factor to multiply the learning rate by on '
                         'a validation plateau',
