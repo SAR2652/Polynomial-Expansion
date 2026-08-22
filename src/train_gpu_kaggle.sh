@@ -9,7 +9,7 @@
 #     --learning_rate 1e-4 \
 #     --bidirectional
 
-python -m src.jax_implementation.ddp_train \
+python -m src.jax_implementation.ddp_train_lr_schedule \
     --input_dir /kaggle/input/polynomialexpansion \
     --output_dir /kaggle/working/output \
     --tokenizer_filepath /kaggle/input/polynomialexpansion/tokenizer.joblib \
@@ -17,7 +17,7 @@ python -m src.jax_implementation.ddp_train \
     --embed_dim 64 \
     --epochs 300 \
     --batch_size 1536 \
-    --learning_rate 2e-5 \
+    --learning_rate 1e-5 \
     --early_stopping_patience 10 \
     --bidirectional \
     --disable_wandb \
