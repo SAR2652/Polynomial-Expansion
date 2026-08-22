@@ -15,7 +15,7 @@ python -m src.jax_implementation.ddp_train_lr_schedule \
     --tokenizer_filepath /kaggle/input/polynomialexpansion/tokenizer.joblib \
     --hidden_dim 64 \
     --embed_dim 64 \
-    --epochs 300 \
+    --epochs 500 \
     --batch_size 1536 \
     --learning_rate 1e-5 \
     --early_stopping_patience 10 \
